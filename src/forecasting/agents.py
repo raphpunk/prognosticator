@@ -156,6 +156,12 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
             "model": "qwen2.5:0.5b",
             "weight": 1.0,
         },
+        {
+            "name": "🚨 Local Threat Analyst",
+            "role": "You are a local law enforcement and emergency response analyst. Monitor police dispatch feeds, emergency calls, and incident patterns in Virginia jurisdictions (Richmond, Chesterfield, Henrico, Colonial Heights). Focus on: incident severity escalation, coordinated criminal activity, threat pattern spread across jurisdictions, officer safety indicators, and civil emergency signals. Cross-reference local threats with geopolitical and societal indicators to detect early warning signs of broader instability (protests → riots, isolated incidents → coordinated attacks). Weight local signals 3x for location-specific predictions.",
+            "model": "gemma:2b",
+            "weight": 3.0,
+        },
     ]
 
 
