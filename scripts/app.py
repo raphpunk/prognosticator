@@ -946,6 +946,259 @@ def render_prediction_tab(db_path: str) -> None:
             
             st.divider()
 
+def render_prediction_review_tab() -> None:
+    """Render Prediction Review tab for analyzing historical predictions."""
+    st.header("📋 Prediction Review")
+    st.markdown("Review past predictions, analyze agent performance, and mark outcomes.")
+    
+    # Import dependencies
+    import glob
+    import json
+    from pathlib import Path
+    
+    # Get all prediction reports
+    reports_dir = Path("data/prediction_reports")
+    if not reports_dir.exists():
+        st.info("No prediction reports found. Make predictions in the Prediction tab first.")
+        return
+    
+    report_files = sorted(glob.glob(str(reports_dir / "*.json")), reverse=True)
+    
+    if not report_files:
+        st.info("No prediction reports found. Make predictions in the Prediction tab first.")
+        return
+    
+    st.caption(f"Found {len(report_files)} prediction reports")
+    
+    # Filters
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        filter_domain = st.selectbox(
+            "Filter by Domain",
+            ["All"] + ["military", "financial", "energy", "technology", "climate", "geopolitical", 
+                       "health", "infrastructure", "societal", "policy"]
+        )
+    with col2:
+        sort_by = st.selectbox(
+            "Sort by",
+            ["Recent First", "Oldest First", "Highest Quality", "Lowest Quality"]
+        )
+    with col3:
+        show_limit = st.number_input("Show reports", min_value=5, max_value=100, value=20, step=5)
+    
+    # Load and filter reports
+    reports = []
+    for report_file in report_files[:show_limit]:
+        try:
+            with open(report_file, 'r') as f:
+                report = json.load(f)
+                
+                # Apply domain filter
+                if filter_domain != "All":
+                    if report.get("domain_analysis", {}).get("primary_domain") != filter_domain:
+                        continue
+                
+                reports.append({
+                    "file": report_file,
+                    "data": report
+                })
+        except Exception as e:
+            st.warning(f"Could not load {Path(report_file).name}: {e}")
+    
+    # Apply sorting
+    if sort_by == "Oldest First":
+        reports = list(reversed(reports))
+    elif sort_by == "Highest Quality":
+        reports = sorted(reports, key=lambda r: r["data"].get("data_quality_score", 0), reverse=True)
+    elif sort_by == "Lowest Quality":
+        reports = sorted(reports, key=lambda r: r["data"].get("data_quality_score", 0))
+    
+    if not reports:
+        st.info(f"No reports match the filter: {filter_domain}")
+        return
+    
+    # Report selector
+    report_options = []
+    for i, r in enumerate(reports):
+        metadata = r["data"].get("metadata", {})
+        question = r["data"].get("question", "Unknown")[:60]
+        timestamp = metadata.get("timestamp", "Unknown")
+        quality = r["data"].get("data_quality_score", 0)
+        report_options.append(f"{i+1}. [{quality:.2f}] {timestamp} - {question}...")
+    
+    selected_idx = st.selectbox("Select Prediction Report", range(len(reports)), 
+                                format_func=lambda i: report_options[i])
+    
+    if selected_idx is not None:
+        selected_report = reports[selected_idx]["data"]
+        st.divider()
+        
+        # Report overview
+        st.subheader("📊 Prediction Overview")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Data Quality", f"{selected_report.get('data_quality_score', 0):.2%}")
+        with col2:
+            consensus = selected_report.get("consensus_analysis", {})
+            st.metric("Consensus", consensus.get("agreement_level", "Unknown"))
+        with col3:
+            st.metric("Consensus Strength", f"{consensus.get('consensus_strength', 0):.2%}")
+        with col4:
+            metadata = selected_report.get("metadata", {})
+            st.metric("Agents", f"{metadata.get('successful_agents', 0)}/{metadata.get('total_agents', 0)}")
+        
+        # Question and domain
+        st.markdown(f"**Question:** {selected_report.get('question', 'Unknown')}")
+        
+        domain_analysis = selected_report.get("domain_analysis", {})
+        st.markdown(f"**Primary Domain:** {domain_analysis.get('primary_domain', 'Unknown')} "
+                   f"(Confidence: {domain_analysis.get('confidence', 0):.2%})")
+        
+        if domain_analysis.get("secondary_domains"):
+            st.markdown(f"**Secondary Domains:** {', '.join(domain_analysis.get('secondary_domains', []))}")
+        
+        if domain_analysis.get("keywords_found"):
+            with st.expander("🔍 Domain Keywords Found"):
+                st.write(", ".join(domain_analysis.get("keywords_found", [])))
+        
+        # Outcome tracking
+        st.divider()
+        st.subheader("✅ Mark Outcome")
+        
+        from forecasting.performance_tracker import PerformanceTracker
+        
+        tracker = PerformanceTracker()
+        prediction_id = metadata.get("prediction_id")
+        
+        # Check if outcome already recorded
+        existing_outcome = None
+        if prediction_id:
+            try:
+                conn = tracker._get_connection()
+                cursor = conn.execute(
+                    "SELECT outcome, notes FROM prediction_outcomes WHERE prediction_id = ?",
+                    (prediction_id,)
+                )
+                row = cursor.fetchone()
+                if row:
+                    existing_outcome = {"outcome": row[0], "notes": row[1]}
+                conn.close()
+            except Exception as e:
+                st.warning(f"Could not check existing outcome: {e}")
+        
+        if existing_outcome:
+            st.success(f"✅ Outcome already recorded: **{existing_outcome['outcome']}**")
+            if existing_outcome['notes']:
+                st.info(f"Notes: {existing_outcome['notes']}")
+        else:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                if st.button("✅ Mark Correct", type="primary"):
+                    if prediction_id:
+                        tracker.record_outcome(prediction_id, "correct", "")
+                        st.success("Marked as correct!")
+                        st.rerun()
+            
+            with col2:
+                if st.button("❌ Mark Incorrect", type="secondary"):
+                    if prediction_id:
+                        tracker.record_outcome(prediction_id, "incorrect", "")
+                        st.warning("Marked as incorrect")
+                        st.rerun()
+            
+            with col3:
+                if st.button("⚠️ Mark Partial", type="secondary"):
+                    if prediction_id:
+                        tracker.record_outcome(prediction_id, "partial", "")
+                        st.info("Marked as partial")
+                        st.rerun()
+            
+            notes = st.text_area("Outcome Notes (optional)", 
+                               help="Add context about why the prediction was right/wrong")
+            
+            if notes and prediction_id:
+                # Would need to update the last recorded outcome with notes
+                pass
+        
+        # Agent responses detail
+        st.divider()
+        st.subheader("👥 Agent Responses")
+        
+        agent_responses = selected_report.get("agent_responses", [])
+        if agent_responses:
+            # Create dataframe for agent summary
+            import pandas as pd
+            
+            agent_summary = []
+            for resp in agent_responses:
+                agent_summary.append({
+                    "Agent": resp.get("agent_name", "Unknown"),
+                    "Confidence": f"{resp.get('confidence', 0):.2%}",
+                    "Base Weight": f"{resp.get('base_weight', 1.0):.2f}",
+                    "Relevance Boost": f"{resp.get('relevance_boost', 1.0):.2f}x",
+                    "Performance Boost": f"{resp.get('performance_boost', 1.0):.2f}x",
+                    "Final Weight": f"{resp.get('adjusted_weight', 1.0):.2f}",
+                    "Cached": "✓" if resp.get("cached", False) else "✗",
+                    "Model": resp.get("model", "unknown")
+                })
+            
+            df = pd.DataFrame(agent_summary)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            # Detailed responses
+            with st.expander("📄 View Full Agent Responses"):
+                for resp in agent_responses:
+                    st.markdown(f"**{resp.get('agent_name', 'Unknown')}**")
+                    st.markdown(resp.get("response", "No response"))
+                    st.divider()
+        
+        # Consensus analysis
+        st.divider()
+        st.subheader("🤝 Consensus Analysis")
+        
+        consensus = selected_report.get("consensus_analysis", {})
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(f"**Agreement Level:** {consensus.get('agreement_level', 'Unknown')}")
+            st.markdown(f"**Consensus Strength:** {consensus.get('consensus_strength', 0):.2%}")
+        
+        with col2:
+            if consensus.get("outlier_agents"):
+                st.markdown("**Outlier Agents:**")
+                for outlier in consensus.get("outlier_agents", []):
+                    st.markdown(f"- {outlier}")
+            else:
+                st.markdown("**No outlier agents detected**")
+        
+        if consensus.get("confidence_distribution"):
+            with st.expander("📊 Confidence Distribution"):
+                st.json(consensus.get("confidence_distribution", {}))
+        
+        # Key insights
+        if selected_report.get("key_insights"):
+            st.divider()
+            st.subheader("💡 Key Insights")
+            for insight in selected_report.get("key_insights", []):
+                st.markdown(f"- {insight}")
+        
+        # Uncertainty factors
+        if selected_report.get("uncertainty_factors"):
+            st.divider()
+            st.subheader("⚠️ Uncertainty Factors")
+            for factor in selected_report.get("uncertainty_factors", []):
+                st.markdown(f"- {factor}")
+        
+        # Execution metadata
+        with st.expander("⚙️ Execution Metadata"):
+            st.json(metadata)
+        
+        # Raw report data
+        with st.expander("📋 Raw Report Data"):
+            st.json(selected_report)
+
 def render_feeds_tab(cfg: Dict[str, Any]) -> None:
     """Render Feeds management tab."""
     st.header("📡 Data Feeds")
@@ -1218,19 +1471,21 @@ def main() -> None:
         st.markdown(f"- {'✅' if data_ok else '⬜'} Data present")
 
     # Navigation tabs
-    tabs = st.tabs(["📊 Dashboard", "🔮 Prediction", "📡 Feeds", "🧠 Model Config", "📥 Install Model", "⚙️ Settings"])
+    tabs = st.tabs(["📊 Dashboard", "🔮 Prediction", "📋 Prediction Review", "📡 Feeds", "🧠 Model Config", "📥 Install Model", "⚙️ Settings"])
     
     with tabs[0]:
         render_dashboard_tab(db_path)
     with tabs[1]:
         render_prediction_tab(db_path)
     with tabs[2]:
-        render_feeds_tab(cfg)
+        render_prediction_review_tab()
     with tabs[3]:
-        render_model_config_tab()
+        render_feeds_tab(cfg)
     with tabs[4]:
-        render_model_install_tab()
+        render_model_config_tab()
     with tabs[5]:
+        render_model_install_tab()
+    with tabs[6]:
         st.subheader("System Settings")
         cfg_reload = load_feeds_config()
         raw = st.text_area("feeds.json", value=json.dumps(cfg_reload, indent=2), height=400)

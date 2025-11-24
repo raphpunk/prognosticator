@@ -6,6 +6,7 @@ import os
 import shutil
 import sqlite3
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -22,6 +23,9 @@ from forecasting.agent_cache import (
     hash_question
 )
 from forecasting.config import get_config, get_logger
+from forecasting.prediction_report import PredictionReportGenerator
+from forecasting.domain_consensus import DomainClassifier
+from forecasting.performance_tracker import PerformanceTracker
 
 def _load_json(path: str) -> Dict:
     if not os.path.exists(path):
@@ -635,6 +639,74 @@ def run_conversation(
 
     logger.info(f"Conversation complete. Participating agents: {len(agent_outputs)}, Declined: {len(declined_agents)}, Final probability: {weighted_probability:.2f}, Confidence: {weighted_confidence:.2f}")
     
+    # Generate and save comprehensive prediction report
+    report = None
+    try:
+        report_generator = PredictionReportGenerator()
+        classifier = DomainClassifier()
+        
+        # Classify domain
+        domain_classification = classifier.classify(question)
+        domain_dict = {
+            "primary_domain": domain_classification.primary_domain,
+            "confidence": domain_classification.confidence,
+            "secondary_domains": domain_classification.secondary_domains
+        }
+        
+        # Prepare agent responses for report
+        agent_responses_for_report = []
+        for agent_output in agent_outputs:
+            agent_responses_for_report.append({
+                "agent_name": agent_output.get("agent", "Unknown"),
+                "response": agent_output.get("raw", ""),
+                "confidence": agent_output.get("parsed", {}).get("confidence", 0.5) if isinstance(agent_output.get("parsed"), dict) else 0.5,
+                "base_weight": agent_output.get("weight", 1.0),
+                "relevance_boost": 1.0,  # TODO: Calculate from domain analysis
+                "performance_boost": 1.0,  # TODO: Get from PerformanceTracker
+                "adjusted_weight": agent_output.get("weight", 1.0),
+                "execution_time_ms": 0,  # TODO: Track execution time
+                "model": agent_output.get("model", "unknown"),
+                "cached": agent_output.get("cached", False)
+            })
+        
+        # Consensus result
+        consensus_result = {
+            "strength": weighted_confidence,
+            "total_weight": total_weight
+        }
+        
+        # Execution metrics
+        execution_metrics = {
+            "total_time_ms": 0,  # TODO: Track total execution time
+            "succeeded": len(agent_outputs),
+            "failed": len(declined_agents),
+            "cache_hits": sum(1 for a in agent_outputs if a.get("cached", False)),
+            "circuit_breaker_trips": 0  # TODO: Track circuit breaker trips
+        }
+        
+        report = report_generator.generate_report(
+            question=question,
+            domain_classification=domain_dict,
+            agent_responses=agent_responses_for_report,
+            consensus_result=consensus_result,
+            execution_metrics=execution_metrics
+        )
+        
+        logger.info(f"Generated prediction report: {report.metadata.prediction_id}")
+        
+        # Record prediction in performance tracker
+        tracker = PerformanceTracker()
+        tracker.record_prediction(
+            prediction_id=report.metadata.prediction_id,
+            question=question,
+            question_hash=report.metadata.question_hash,
+            domain=domain_classification.primary_domain,
+            agent_responses=agent_responses_for_report
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to generate prediction report: {e}")
+    
     return {
         "question": question,
         "context": context,
@@ -643,6 +715,8 @@ def run_conversation(
         "declined_agents": declined_agents,
         "summary": summary,
         "orchestrator_plan": orchestrator_plan,
+        "report": report.to_dict() if report else None,
+        "prediction_id": report.metadata.prediction_id if report else None,
     }
 
 
