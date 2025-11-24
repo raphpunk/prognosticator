@@ -129,6 +129,104 @@ def get_logger() -> logging.Logger:
     return _logger
 
 
+# Domain expertise matrix - maps agents to their strong domains
+DOMAIN_EXPERTISE_MATRIX = {
+    "📊 Macro Risk Forecaster": {
+        "financial": 0.9,
+        "geopolitical": 0.8,
+        "general": 0.7
+    },
+    "⚔️ Military Strategy Expert": {
+        "military": 1.0,
+        "geopolitical": 0.9,
+        "general": 0.5
+    },
+    "💰 Financial Markets Analyst": {
+        "financial": 1.0,
+        "energy": 0.7,
+        "general": 0.6
+    },
+    "⚡ Energy & Resource Forecaster": {
+        "energy": 1.0,
+        "environmental": 0.7,
+        "general": 0.6
+    },
+    "📈 Time-Series Specialist": {
+        "financial": 0.8,
+        "technology": 0.7,
+        "general": 0.9
+    },
+    "🔐 Technology & Cyber Expert": {
+        "technology": 1.0,
+        "infrastructure": 0.8,
+        "general": 0.6
+    },
+    "📜 Historical Pattern Analyst": {
+        "geopolitical": 0.8,
+        "military": 0.7,
+        "general": 0.8
+    },
+    "🌍 Climate & Environmental Expert": {
+        "environmental": 1.0,
+        "energy": 0.7,
+        "general": 0.5
+    },
+    "🏛️ Political Analyst": {
+        "geopolitical": 1.0,
+        "policy": 0.8,
+        "general": 0.7
+    },
+    "🕵️ Intelligence & OSINT Specialist": {
+        "military": 0.9,
+        "geopolitical": 0.9,
+        "technology": 0.7,
+        "general": 0.6
+    },
+    "🏭 Industrial & Supply Chain Expert": {
+        "infrastructure": 1.0,
+        "technology": 0.7,
+        "general": 0.6
+    },
+    "🏥 Healthcare & Biosecurity Expert": {
+        "health": 1.0,
+        "policy": 0.6,
+        "general": 0.5
+    },
+    "🛠️ Infrastructure & Systems Analyst": {
+        "infrastructure": 1.0,
+        "technology": 0.8,
+        "general": 0.6
+    },
+    "👥 Social Dynamics Researcher": {
+        "societal": 1.0,
+        "policy": 0.7,
+        "general": 0.7
+    },
+    "📋 Regulatory & Policy Expert": {
+        "policy": 1.0,
+        "geopolitical": 0.7,
+        "general": 0.6
+    },
+    "🎭 Chaos Agent": {
+        "general": 0.5  # Contrarian, not domain-specific
+    }
+}
+
+
+def get_domain_expertise(agent_name: str, domain: str) -> float:
+    """Get expertise multiplier for agent in specific domain.
+    
+    Args:
+        agent_name: Name of the agent
+        domain: Domain to check expertise for
+    
+    Returns:
+        Multiplier between 0.5 and 1.0
+    """
+    agent_domains = DOMAIN_EXPERTISE_MATRIX.get(agent_name, {})
+    return agent_domains.get(domain, agent_domains.get("general", 0.7))
+
+
 __all__ = [
     "OllamaConfig",
     "DatabaseConfig", 
@@ -136,5 +234,7 @@ __all__ = [
     "load_config",
     "setup_logging",
     "get_config",
-    "get_logger"
+    "get_logger",
+    "DOMAIN_EXPERTISE_MATRIX",
+    "get_domain_expertise"
 ]

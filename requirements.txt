@@ -8,3 +8,5 @@ pyyaml
 streamlit
 beautifulsoup4
 tldextract
+tenacity
+requests

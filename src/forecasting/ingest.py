@@ -114,13 +114,20 @@ def fetch_multiple_feeds(urls: List[str], max_items_per_feed: int = 50, db_path:
 
     Implements simple per-domain cooldown using `feed_state` in the SQLite DB to avoid re-polling domains too frequently.
     Deduplication is handled downstream by `insert_articles` via content hashes.
+    
+    Includes feed health monitoring to skip unhealthy feeds.
     """
     from urllib.parse import urlparse
     from time import time
     from forecasting.storage import get_last_fetch, set_last_fetch
+    from forecasting.feed_health import FeedHealthTracker
 
     items = []
     now_ts = str(time())
+    
+    # Initialize feed health tracker
+    health_tracker = FeedHealthTracker()
+    
     # load per-feed cooldowns
     feed_cfg = {}
     try:
@@ -130,6 +137,10 @@ def fetch_multiple_feeds(urls: List[str], max_items_per_feed: int = 50, db_path:
         feed_cfg = {}
 
     for u in urls:
+        # Check feed health - skip if unhealthy
+        if health_tracker.should_skip_feed(u):
+            continue
+        
         try:
             domain = urlparse(u).netloc
         except Exception:
@@ -160,7 +171,38 @@ def fetch_multiple_feeds(urls: List[str], max_items_per_feed: int = 50, db_path:
 
         try:
             feed_items = fetch_rss_feed(u, max_items=max_items_per_feed)
-        except Exception:
+            
+            # Record successful fetch
+            health_tracker.record_success(u)
+            
+            # Record articles for anomaly detection
+            for item in feed_items:
+                article_id = item.get("id", "")
+                published = item.get("published", "")
+                content = (item.get("title", "") + " " + item.get("summary", ""))
+                
+                if article_id and published:
+                    health_tracker.record_article(
+                        article_id=article_id,
+                        feed_url=u,
+                        published=published,
+                        content_length=len(content),
+                        topic_keywords=None  # Could extract keywords here
+                    )
+            
+            # Check for anomalies
+            anomalies = health_tracker.check_feed_anomalies(u)
+            if anomalies:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Feed {u} has {len(anomalies)} anomalies detected")
+            
+            # Update reputation
+            health_tracker.update_reputation(u)
+            
+        except Exception as e:
+            # Record failure
+            health_tracker.record_failure(u, str(e))
             # skip failing feeds
             continue
         for it in feed_items:

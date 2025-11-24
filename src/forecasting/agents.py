@@ -22,10 +22,12 @@ from forecasting.agent_cache import (
     record_debate_position,
     hash_question
 )
-from forecasting.config import get_config, get_logger
+from forecasting.config import get_config, get_logger, get_domain_expertise
 from forecasting.prediction_report import PredictionReportGenerator
 from forecasting.domain_consensus import DomainClassifier
 from forecasting.performance_tracker import PerformanceTracker
+from forecasting.reputation import ReputationTracker
+from forecasting.ollama_resilience import with_circuit_breaker, with_retry_and_timeout
 
 def _load_json(path: str) -> Dict:
     if not os.path.exists(path):
@@ -252,13 +254,15 @@ def _call_ollama_cli(model: str, prompt: str) -> str:
     return proc.stdout
 
 
+@with_circuit_breaker
+@with_retry_and_timeout(timeout=30, max_attempts=3)
 def _call_ollama_http(model: str, prompt: str, host: str, port: int, api_key: Optional[str], timeout: Optional[int] = None) -> str:
     """Call Ollama HTTP API with security and error handling."""
     import requests
     
-    # Use config timeout if not provided
+    # Use config timeout if not provided (decorators will override with their timeout)
     if timeout is None:
-        timeout = get_config().ollama.timeout
+        timeout = 30  # Default to 30 seconds
 
     url = f"{host.rstrip('/')}:{port}/api/generate"
     headers = {"Content-Type": "application/json"}
@@ -307,7 +311,15 @@ def call_model(prompt: str, model: str, cfg: Dict) -> str:
     mode = cfg.get("mode", "http")
     host = cfg.get("host", "http://localhost")
     port = int(cfg.get("port", 11434))
-    return _call_ollama_http(model or cfg.get("model", model), prompt, host, port, cfg.get("api_key"))
+    result = _call_ollama_http(model or cfg.get("model", model), prompt, host, port, cfg.get("api_key"))
+    
+    # Handle circuit breaker response
+    if isinstance(result, dict):
+        if result.get("status") == "degraded":
+            raise RuntimeError(f"Service degraded: {result.get('error')}")
+        return result.get("response", "")
+    
+    return result
 
 
 AGENT_PROMPT = (
@@ -639,14 +651,75 @@ def run_conversation(
 
     logger.info(f"Conversation complete. Participating agents: {len(agent_outputs)}, Declined: {len(declined_agents)}, Final probability: {weighted_probability:.2f}, Confidence: {weighted_confidence:.2f}")
     
+    # Calculate reputation-weighted consensus
+    reputation_tracker = ReputationTracker()
+    reputation_consensus = None
+    try:
+        # Classify domain for reputation weighting
+        classifier = DomainClassifier()
+        domain_classification = classifier.classify(question)
+        
+        # Prepare agent predictions for reputation-weighted consensus
+        agent_predictions = []
+        for agent_output in agent_outputs:
+            if not agent_output.get("declined"):
+                parsed = agent_output.get("parsed", {})
+                if isinstance(parsed, dict):
+                    agent_name = agent_output.get("agent", "Unknown")
+                    
+                    # Get domain expertise multiplier
+                    domain_expertise = get_domain_expertise(agent_name, domain_classification.primary_domain)
+                    
+                    agent_predictions.append({
+                        "agent_name": agent_name,
+                        "prediction": parsed.get("analysis", ""),
+                        "probability": parsed.get("probability", 0.5),
+                        "confidence": parsed.get("confidence", 0.5),
+                        "weight": agent_output.get("weight", 1.0) * domain_expertise
+                    })
+        
+        # Get reputation-weighted consensus
+        reputation_consensus = reputation_tracker.get_weighted_consensus(
+            agent_predictions,
+            domain=domain_classification.primary_domain,
+            use_reputation=True
+        )
+        
+        # Update weighted values with reputation-based consensus
+        if reputation_consensus:
+            weighted_probability = reputation_consensus["consensus_probability"]
+            weighted_confidence = reputation_consensus["consensus_confidence"]
+            
+            logger.info(f"Reputation-weighted consensus: probability={weighted_probability:.2f}, "
+                       f"confidence={weighted_confidence:.2f}, "
+                       f"dissent={reputation_consensus.get('dissent_percentage', 0):.1%}, "
+                       f"requires_review={reputation_consensus.get('requires_review', False)}")
+        
+        # Record predictions for future reputation tracking
+        import hashlib
+        prediction_id = f"{hashlib.sha256(question.encode()).hexdigest()[:16]}_{datetime.utcnow().isoformat()}"
+        for pred in agent_predictions:
+            reputation_tracker.record_prediction(
+                prediction_id=f"{prediction_id}_{pred['agent_name']}",
+                agent_name=pred["agent_name"],
+                domain=domain_classification.primary_domain,
+                prediction_text=pred["prediction"],
+                confidence=pred["confidence"]
+            )
+        
+    except Exception as e:
+        logger.error(f"Reputation-weighted consensus failed: {e}")
+        # Continue with simple weighted average
+    
     # Generate and save comprehensive prediction report
     report = None
     try:
         report_generator = PredictionReportGenerator()
-        classifier = DomainClassifier()
         
-        # Classify domain
-        domain_classification = classifier.classify(question)
+        if 'domain_classification' not in locals():
+            classifier = DomainClassifier()
+            domain_classification = classifier.classify(question)
+        
         domain_dict = {
             "primary_domain": domain_classification.primary_domain,
             "confidence": domain_classification.confidence,
@@ -717,6 +790,8 @@ def run_conversation(
         "orchestrator_plan": orchestrator_plan,
         "report": report.to_dict() if report else None,
         "prediction_id": report.metadata.prediction_id if report else None,
+        "reputation_consensus": reputation_consensus,
+        "requires_review": reputation_consensus.get("requires_review", False) if reputation_consensus else False,
     }
 
 
