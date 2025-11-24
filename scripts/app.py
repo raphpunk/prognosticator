@@ -1414,6 +1414,119 @@ def render_model_install_tab() -> None:
     st.info("💡 **Tip**: After installing, enable the model in the **Expert Roster** section above.")
 
 
+def render_local_threats_tab() -> None:
+    """Render local threat monitoring interface with dynamic zip code lookup."""
+    st.subheader("🚨 Local Threat Monitoring")
+    st.markdown("Real-time police dispatch monitoring for Virginia jurisdictions")
+    
+    try:
+        from forecasting.local_threats import get_available_zip_codes, get_jurisdictions
+        from forecasting.local_threat_integration import fetch_local_threat_feeds_with_health_tracking
+    except ImportError:
+        st.error("❌ Local threat module not available. Ensure Playwright is installed: `pip install playwright`")
+        return
+    
+    # Get available jurisdictions and zip codes
+    available_zips = get_available_zip_codes()
+    available_jurisdictions = get_jurisdictions()
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("#### Search by Zip Code")
+        zip_input = st.text_input(
+            "Enter Virginia Zip Code",
+            placeholder="e.g., 23112 for Chesterfield",
+            key="local_threat_zip"
+        )
+        
+        if zip_input:
+            if zip_input in available_zips:
+                st.success(f"✓ Found: **{available_zips[zip_input]}** County/City")
+            else:
+                st.warning(f"⚠️ Zip code {zip_input} not in database")
+                st.caption(f"Available: {', '.join(list(available_zips.keys())[:5])}...")
+    
+    with col2:
+        st.markdown("#### Search by Jurisdiction")
+        jurisdiction_select = st.selectbox(
+            "Select Jurisdiction",
+            ["All Jurisdictions"] + available_jurisdictions,
+            key="local_threat_jurisdiction"
+        )
+    
+    if st.button("🔍 Fetch Local Threats", use_container_width=True):
+        with st.spinner("Scraping dispatch feeds..."):
+            try:
+                # Use zip code if provided, otherwise all
+                zip_to_use = zip_input if zip_input and zip_input in available_zips else None
+                
+                feed_items = fetch_local_threat_feeds_with_health_tracking(
+                    zip_code=zip_to_use,
+                    lookback_hours=6,
+                    tracker_db_path="data/local_threats.db",
+                    health_db_path="data/feed_health.db"
+                )
+                
+                if feed_items:
+                    st.success(f"✅ Found {len(feed_items)} active dispatch calls")
+                    
+                    # Display summary metrics
+                    col1, col2, col3 = st.columns(3)
+                    
+                    severities = [item.get('severity', 0) for item in feed_items]
+                    jurisdictions_found = set(item.get('jurisdiction', 'Unknown') for item in feed_items)
+                    
+                    with col1:
+                        st.metric("Total Calls", len(feed_items))
+                    with col2:
+                        st.metric("Avg Severity", f"{sum(severities) / len(severities):.1f}/5")
+                    with col3:
+                        st.metric("Jurisdictions", len(jurisdictions_found))
+                    
+                    st.markdown("---")
+                    st.markdown("#### Active Dispatch Calls")
+                    
+                    # Display calls grouped by severity
+                    for severity_level in [5, 4, 3]:
+                        calls_at_level = [item for item in feed_items if item.get('severity') == severity_level]
+                        if calls_at_level:
+                            severity_names = {5: "🔴 Critical", 4: "🟠 High", 3: "🟡 Medium"}
+                            st.subheader(severity_names.get(severity_level, f"Level {severity_level}"))
+                            
+                            for call in calls_at_level:
+                                with st.container(border=True):
+                                    col1, col2 = st.columns([3, 1])
+                                    with col1:
+                                        st.write(f"**{call['title']}**")
+                                        st.caption(f"📍 {call.get('jurisdiction', 'Unknown')}")
+                                        st.caption(f"🕐 {call.get('published', 'N/A')}")
+                                    with col2:
+                                        st.metric("Severity", f"{call.get('severity', 0)}/5")
+                    
+                    # Raw data export option
+                    st.markdown("---")
+                    if st.button("📥 Export as JSON"):
+                        st.json(feed_items)
+                
+                else:
+                    st.warning("⚠️ No dispatch calls found for the selected jurisdiction")
+                    st.caption("This may mean no active calls or dispatch site structure has changed")
+            
+            except Exception as e:
+                st.error(f"❌ Error fetching local threats: {e}")
+                st.caption("Check that Playwright is installed and dispatch sites are accessible")
+    
+    st.markdown("---")
+    st.markdown("#### Available Jurisdictions")
+    
+    cols = st.columns(len(available_jurisdictions))
+    for idx, jurisdiction in enumerate(available_jurisdictions):
+        with cols[idx]:
+            zips_for_jurisdiction = [z for z, j in available_zips.items() if j == jurisdiction]
+            st.info(f"**{jurisdiction}**\nZips: {', '.join(zips_for_jurisdiction[:3])}")
+
+
 def main() -> None:
     """Main app entry point."""
     st.set_page_config(page_title="Event Forecasting Console", layout="wide", page_icon="🔮", initial_sidebar_state="expanded")
@@ -1471,7 +1584,7 @@ def main() -> None:
         st.markdown(f"- {'✅' if data_ok else '⬜'} Data present")
 
     # Navigation tabs
-    tabs = st.tabs(["📊 Dashboard", "🔮 Prediction", "📋 Prediction Review", "📡 Feeds", "🧠 Model Config", "📥 Install Model", "⚙️ Settings"])
+    tabs = st.tabs(["📊 Dashboard", "🔮 Prediction", "📋 Prediction Review", "📡 Feeds", "🚨 Local Threats", "🧠 Model Config", "📥 Install Model", "⚙️ Settings"])
     
     with tabs[0]:
         render_dashboard_tab(db_path)
@@ -1482,10 +1595,12 @@ def main() -> None:
     with tabs[3]:
         render_feeds_tab(cfg)
     with tabs[4]:
-        render_model_config_tab()
+        render_local_threats_tab()
     with tabs[5]:
-        render_model_install_tab()
+        render_model_config_tab()
     with tabs[6]:
+        render_model_install_tab()
+    with tabs[7]:
         st.subheader("System Settings")
         cfg_reload = load_feeds_config()
         raw = st.text_area("feeds.json", value=json.dumps(cfg_reload, indent=2), height=400)

@@ -28,12 +28,12 @@ JURISDICTION_MAP = {
     "23237": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
     
     # Richmond City
-    "23220": ["https://www.rva.gov/emergency-communications/active-calls"],
-    "23221": ["https://www.rva.gov/emergency-communications/active-calls"],
-    "23222": ["https://www.rva.gov/emergency-communications/active-calls"],
-    "23223": ["https://www.rva.gov/emergency-communications/active-calls"],
-    "23224": ["https://www.rva.gov/emergency-communications/active-calls"],
-    "23225": ["https://www.rva.gov/emergency-communications/active-calls"],
+    "23220": ["https://apps.richmondgov.com/applications/activecalls"],
+    "23221": ["https://apps.richmondgov.com/applications/activecalls"],
+    "23222": ["https://apps.richmondgov.com/applications/activecalls"],
+    "23223": ["https://apps.richmondgov.com/applications/activecalls"],
+    "23224": ["https://apps.richmondgov.com/applications/activecalls"],
+    "23225": ["https://apps.richmondgov.com/applications/activecalls"],
     
     # Henrico County
     "23228": ["https://henrico.us/police/active-calls/"],
@@ -517,8 +517,227 @@ class DispatchScraper:
             # Fallback to current time if parsing fails
             return datetime.utcnow().isoformat()
     
+    def scrape_richmond(self, url: str = "https://www.rva.gov/emergency-communications/active-calls") -> List[DispatchCall]:
+        """Scrape Richmond City active calls."""
+        if not self.playwright_available:
+            return []
+        
+        calls = []
+        try:
+            with self.playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.set_default_timeout(self.timeout * 1000)
+                
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                except Exception as e:
+                    self.tracker.record_error(url, "navigation_timeout", str(e))
+                    browser.close()
+                    return []
+                
+                # Try multiple selectors for Richmond's table
+                try:
+                    page.wait_for_selector("table", timeout=10000)
+                except Exception:
+                    logger.warning(f"Table not found at {url}, trying alternative selectors")
+                    browser.close()
+                    return []
+                
+                try:
+                    rows = page.query_selector_all("table tbody tr")
+                    
+                    for row in rows:
+                        try:
+                            cells = row.query_selector_all("td")
+                            if len(cells) >= 4:
+                                # Richmond format varies, try to extract common fields
+                                incident_id = cells[0].inner_text().strip()[:50]
+                                incident_type = cells[1].inner_text().strip() if len(cells) > 1 else "UNKNOWN"
+                                location = cells[2].inner_text().strip() if len(cells) > 2 else "Unknown"
+                                
+                                severity = self._calculate_severity(incident_type)
+                                timestamp = self._normalize_timestamp("")
+                                
+                                call = DispatchCall(
+                                    incident_id=f"richmond_{hashlib.md5(incident_id.encode()).hexdigest()[:8]}",
+                                    incident_type=incident_type,
+                                    location=location,
+                                    jurisdiction="Richmond",
+                                    units=[],
+                                    timestamp=timestamp,
+                                    severity=severity,
+                                    coordinates=None,
+                                    raw_data=None
+                                )
+                                calls.append(call)
+                        except Exception as e:
+                            logger.debug(f"Error parsing Richmond row: {e}")
+                            continue
+                    
+                    if calls:
+                        logger.info(f"Scraped {len(calls)} calls from Richmond")
+                        for call in calls:
+                            self.tracker.record_call(call)
+                
+                except Exception as e:
+                    self.tracker.record_error(url, "parse_error", str(e))
+                
+                browser.close()
+        
+        except Exception as e:
+            self.tracker.record_error(url, "playwright_error", str(e))
+        
+        return calls
+    
+    def scrape_henrico(self, url: str = "https://henrico.us/police/active-calls/") -> List[DispatchCall]:
+        """Scrape Henrico County active calls."""
+        if not self.playwright_available:
+            return []
+        
+        calls = []
+        try:
+            with self.playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.set_default_timeout(self.timeout * 1000)
+                
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                except Exception as e:
+                    self.tracker.record_error(url, "navigation_timeout", str(e))
+                    browser.close()
+                    return []
+                
+                try:
+                    page.wait_for_selector("table", timeout=10000)
+                except Exception:
+                    logger.warning(f"Table not found at {url}")
+                    browser.close()
+                    return []
+                
+                try:
+                    rows = page.query_selector_all("table tbody tr")
+                    
+                    for row in rows:
+                        try:
+                            cells = row.query_selector_all("td")
+                            if len(cells) >= 3:
+                                incident_id = cells[0].inner_text().strip()[:50]
+                                incident_type = cells[1].inner_text().strip() if len(cells) > 1 else "UNKNOWN"
+                                location = cells[2].inner_text().strip() if len(cells) > 2 else "Unknown"
+                                
+                                severity = self._calculate_severity(incident_type)
+                                timestamp = self._normalize_timestamp("")
+                                
+                                call = DispatchCall(
+                                    incident_id=f"henrico_{hashlib.md5(incident_id.encode()).hexdigest()[:8]}",
+                                    incident_type=incident_type,
+                                    location=location,
+                                    jurisdiction="Henrico",
+                                    units=[],
+                                    timestamp=timestamp,
+                                    severity=severity,
+                                    coordinates=None,
+                                    raw_data=None
+                                )
+                                calls.append(call)
+                        except Exception as e:
+                            logger.debug(f"Error parsing Henrico row: {e}")
+                            continue
+                    
+                    if calls:
+                        logger.info(f"Scraped {len(calls)} calls from Henrico")
+                        for call in calls:
+                            self.tracker.record_call(call)
+                
+                except Exception as e:
+                    self.tracker.record_error(url, "parse_error", str(e))
+                
+                browser.close()
+        
+        except Exception as e:
+            self.tracker.record_error(url, "playwright_error", str(e))
+        
+        return calls
+    
+    def scrape_colonial_heights(self, url: str = "https://www.colonialheightsva.gov/police") -> List[DispatchCall]:
+        """Scrape Colonial Heights active calls."""
+        if not self.playwright_available:
+            return []
+        
+        calls = []
+        try:
+            with self.playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                page = browser.new_page()
+                page.set_default_timeout(self.timeout * 1000)
+                
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=self.timeout * 1000)
+                except Exception as e:
+                    self.tracker.record_error(url, "navigation_timeout", str(e))
+                    browser.close()
+                    return []
+                
+                try:
+                    page.wait_for_selector("table", timeout=10000)
+                except Exception:
+                    logger.warning(f"Table not found at {url}")
+                    browser.close()
+                    return []
+                
+                try:
+                    rows = page.query_selector_all("table tbody tr")
+                    
+                    for row in rows:
+                        try:
+                            cells = row.query_selector_all("td")
+                            if len(cells) >= 3:
+                                incident_id = cells[0].inner_text().strip()[:50]
+                                incident_type = cells[1].inner_text().strip() if len(cells) > 1 else "UNKNOWN"
+                                location = cells[2].inner_text().strip() if len(cells) > 2 else "Unknown"
+                                
+                                severity = self._calculate_severity(incident_type)
+                                timestamp = self._normalize_timestamp("")
+                                
+                                call = DispatchCall(
+                                    incident_id=f"colonialheights_{hashlib.md5(incident_id.encode()).hexdigest()[:8]}",
+                                    incident_type=incident_type,
+                                    location=location,
+                                    jurisdiction="Colonial Heights",
+                                    units=[],
+                                    timestamp=timestamp,
+                                    severity=severity,
+                                    coordinates=None,
+                                    raw_data=None
+                                )
+                                calls.append(call)
+                        except Exception as e:
+                            logger.debug(f"Error parsing Colonial Heights row: {e}")
+                            continue
+                    
+                    if calls:
+                        logger.info(f"Scraped {len(calls)} calls from Colonial Heights")
+                        for call in calls:
+                            self.tracker.record_call(call)
+                
+                except Exception as e:
+                    self.tracker.record_error(url, "parse_error", str(e))
+                
+                browser.close()
+        
+        except Exception as e:
+            self.tracker.record_error(url, "playwright_error", str(e))
+        
+        return calls
+
     def scrape_all_jurisdictions(self, zip_code: Optional[str] = None) -> List[DispatchCall]:
-        """Scrape all configured jurisdictions or specific zip code."""
+        """Scrape all configured jurisdictions or specific zip code.
+        
+        If zip_code is provided, scrapes only the jurisdiction for that zip code.
+        Otherwise, scrapes all known jurisdictions.
+        """
         all_calls = []
         
         urls_to_scrape = set()
@@ -534,7 +753,15 @@ class DispatchScraper:
             if "chesterfield" in url.lower():
                 calls = self.scrape_chesterfield(url)
                 all_calls.extend(calls)
-            # TODO: Add scrapers for other jurisdictions
+            elif "richmondgov" in url.lower() or "rva.gov" in url.lower() or "activecalls" in url.lower():
+                calls = self.scrape_richmond(url)
+                all_calls.extend(calls)
+            elif "henrico" in url.lower():
+                calls = self.scrape_henrico(url)
+                all_calls.extend(calls)
+            elif "colonialheights" in url.lower():
+                calls = self.scrape_colonial_heights(url)
+                all_calls.extend(calls)
             else:
                 logger.warning(f"No scraper implemented for {url}")
         
@@ -592,6 +819,34 @@ def get_jurisdiction_for_zip(zip_code: str) -> Optional[str]:
     return None
 
 
+def get_available_zip_codes() -> Dict[str, str]:
+    """Get all available Virginia zip codes and their jurisdictions.
+    
+    Returns:
+        Dict mapping zip code to jurisdiction name
+    """
+    result = {}
+    for zip_code, urls in JURISDICTION_MAP.items():
+        jurisdiction = get_jurisdiction_for_zip(zip_code)
+        if jurisdiction:
+            result[zip_code] = jurisdiction
+    return result
+
+
+def get_jurisdictions() -> List[str]:
+    """Get list of unique jurisdictions available.
+    
+    Returns:
+        List of jurisdiction names
+    """
+    jurisdictions = set()
+    for zip_code in JURISDICTION_MAP.keys():
+        jurisdiction = get_jurisdiction_for_zip(zip_code)
+        if jurisdiction:
+            jurisdictions.add(jurisdiction)
+    return sorted(list(jurisdictions))
+
+
 __all__ = [
     "LocalThreatTracker",
     "DispatchScraper",
@@ -599,6 +854,8 @@ __all__ = [
     "ThreatPattern",
     "convert_to_feed_format",
     "get_jurisdiction_for_zip",
+    "get_available_zip_codes",
+    "get_jurisdictions",
     "JURISDICTION_MAP",
     "INCIDENT_SEVERITY"
 ]

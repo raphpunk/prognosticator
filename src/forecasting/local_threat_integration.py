@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def fetch_local_threat_feeds(
+    zip_code: Optional[str] = None,
     jurisdictions: Optional[List[str]] = None,
     lookback_hours: int = 6,
     tracker_db_path: str = "data/local_threats.db"
@@ -24,12 +25,14 @@ def fetch_local_threat_feeds(
     
     This function:
     1. Initializes the LocalThreatTracker
-    2. Scrapes dispatch data for specified jurisdictions (or all if None)
+    2. Scrapes dispatch data for specified zip code or all jurisdictions
     3. Detects threat patterns (escalation, coordination, spread)
     4. Converts data to RSS-like feed format for pipeline integration
     
     Args:
-        jurisdictions: List of jurisdiction names (e.g., ['chesterfield', 'richmond'])
+        zip_code: Virginia zip code to scrape (e.g., '23112' for Chesterfield)
+                 If provided, scrapes only that jurisdiction
+        jurisdictions: (Deprecated) List of jurisdiction names
                       If None, fetches all configured jurisdictions
         lookback_hours: How far back to look for pattern detection (default: 6 hours)
         tracker_db_path: Path to local threats database
@@ -39,17 +42,23 @@ def fetch_local_threat_feeds(
         Returns empty list on error (non-blocking for main pipeline)
     """
     try:
-        from src.forecasting.local_threats import LocalThreatTracker, DispatchScraper
+        # Try both import styles for flexibility
+        try:
+            from src.forecasting.local_threats import LocalThreatTracker, DispatchScraper
+        except ModuleNotFoundError:
+            from forecasting.local_threats import LocalThreatTracker, DispatchScraper
         
         # Initialize tracker and scraper
         tracker = LocalThreatTracker(db_path=tracker_db_path)
-        scraper = DispatchScraper(tracker=tracker)  # Pass tracker to scraper
+        scraper = DispatchScraper(tracker=tracker)
         
-        # Scrape all jurisdictions (or filtered by zip code if needed)
-        # Note: jurisdictions parameter kept for future expansion
+        # Scrape specific zip code or all jurisdictions
         try:
-            all_calls = scraper.scrape_all_jurisdictions(zip_code=None)
-            logger.info(f"Fetched {len(all_calls)} dispatch calls from all jurisdictions")
+            all_calls = scraper.scrape_all_jurisdictions(zip_code=zip_code)
+            if zip_code:
+                logger.info(f"Fetched {len(all_calls)} dispatch calls from zip code {zip_code}")
+            else:
+                logger.info(f"Fetched {len(all_calls)} dispatch calls from all jurisdictions")
             
             # Record calls in database
             for call in all_calls:
@@ -69,7 +78,10 @@ def fetch_local_threat_feeds(
         logger.info(f"Detected {len(patterns)} threat patterns")
         
         # Convert calls to feed format (standalone function)
-        from src.forecasting.local_threats import convert_to_feed_format
+        try:
+            from src.forecasting.local_threats import convert_to_feed_format
+        except ModuleNotFoundError:
+            from forecasting.local_threats import convert_to_feed_format
         feed_items = convert_to_feed_format(calls=all_calls, min_severity=3)
         logger.info(f"Converted {len(feed_items)} items to feed format")
         
@@ -84,10 +96,13 @@ def fetch_local_threat_feeds(
         return []
     except Exception as e:
         logger.error(f"Error fetching local threat feeds: {e}", exc_info=True)
+        if zip_code:
+            logger.error(f"Failed to scrape zip code {zip_code}")
         return []
 
 
 def fetch_local_threat_feeds_with_health_tracking(
+    zip_code: Optional[str] = None,
     jurisdictions: Optional[List[str]] = None,
     lookback_hours: int = 6,
     tracker_db_path: str = "data/local_threats.db",
@@ -99,7 +114,9 @@ def fetch_local_threat_feeds_with_health_tracking(
     with feed health monitoring to track reliability and detect anomalies.
     
     Args:
-        jurisdictions: List of jurisdiction names to scrape
+        zip_code: Virginia zip code to scrape (e.g., '23112')
+                 If provided, scrapes only that jurisdiction
+        jurisdictions: (Deprecated) List of jurisdiction names to scrape
         lookback_hours: Pattern detection lookback window
         tracker_db_path: Path to local threats database
         health_db_path: Path to feed health database
@@ -108,7 +125,10 @@ def fetch_local_threat_feeds_with_health_tracking(
         List of feed-formatted items (empty list on error)
     """
     try:
-        from src.forecasting.feed_health import FeedHealthTracker
+        try:
+            from src.forecasting.feed_health import FeedHealthTracker
+        except ModuleNotFoundError:
+            from forecasting.feed_health import FeedHealthTracker
         
         # Virtual feed URL for health tracking (not a real URL)
         feed_url = "local://dispatch/virginia"
@@ -123,6 +143,7 @@ def fetch_local_threat_feeds_with_health_tracking(
         
         # Fetch the data
         feed_items = fetch_local_threat_feeds(
+            zip_code=zip_code,
             jurisdictions=jurisdictions,
             lookback_hours=lookback_hours,
             tracker_db_path=tracker_db_path
@@ -155,7 +176,7 @@ def fetch_local_threat_feeds_with_health_tracking(
                     logger.warning(f"  - {anomaly['anomaly_type']}: {anomaly.get('details', '')}")
             
             # Update reputation based on anomalies
-            health_tracker.update_reputation(feed_url, bool(anomalies))
+            health_tracker.update_reputation(feed_url)
             
         else:
             # Record failure (no data returned)
@@ -169,7 +190,12 @@ def fetch_local_threat_feeds_with_health_tracking(
     except Exception as e:
         logger.error(f"Error in local threat health tracking: {e}", exc_info=True)
         # Fall back to direct fetch without health tracking
-        return fetch_local_threat_feeds(jurisdictions, lookback_hours, tracker_db_path)
+        return fetch_local_threat_feeds(
+            zip_code=zip_code,
+            jurisdictions=jurisdictions,
+            lookback_hours=lookback_hours,
+            tracker_db_path=tracker_db_path
+        )
 
 
 def test_local_threat_integration():
