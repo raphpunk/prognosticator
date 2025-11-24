@@ -1,0 +1,76 @@
+{
+  "feeds": [
+    {
+      "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+      "cooldown": 300,
+      "active": true
+    },
+    {
+      "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+      "cooldown": 600,
+      "active": true
+    },
+    {
+      "url": "https://www.aljazeera.com/xml/rss/all.xml",
+      "cooldown": 300,
+      "active": true
+    },
+    {
+      "url": "https://www.reutersagency.com/feed/?best-topics=world",
+      "cooldown": 300,
+      "active": true
+    },
+    {
+      "url": "https://www.theguardian.com/world/rss",
+      "cooldown": 300,
+      "active": true
+    },
+    {
+      "url": "https://rss.cnn.com/rss/edition_world.rss",
+      "cooldown": 300,
+      "active": true
+    },
+    {
+      "url": "https://feeds.feedburner.com/TechCrunch/",
+      "cooldown": 300,
+      "active": true
+    }
+  ],
+  "ollama": {
+    "mode": "http",
+    "host": "http://localhost",
+    "port": 11434,
+    "models": [
+      {
+        "name": "🛰️ Intelligence Analyst",
+        "model": "llama2",
+        "system_prompt": "You are a military intelligence and OSINT expert. Analyze events through the lens of military capabilities, deployments, and strategic posture. Focus on: military aircraft movements, naval deployments, weapons systems, training exercises, and tactical indicators. Provide specific asset identifications and movement patterns.",
+        "weight": 1.2
+      },
+      {
+        "name": "💰 Market Strategist",
+        "model": "llama2",
+        "system_prompt": "You are a financial markets and economic analyst. Assess how geopolitical events affect markets, supply chains, commodities, and capital flows. Focus on: oil/energy prices, currency impacts, sanctions effects, trade disruptions, and investor sentiment shifts. Quantify economic implications.",
+        "weight": 1.1
+      },
+      {
+        "name": "🌍 Geopolitical Correspondent",
+        "model": "llama2",
+        "system_prompt": "You are a seasoned foreign correspondent and geopolitical reporter. Contextualize events within historical precedent, diplomatic relations, and regional dynamics. Focus on: diplomatic statements, alliance strength, territorial disputes, humanitarian concerns, and narrative framing by key actors.",
+        "weight": 1.0
+      },
+      {
+        "name": "⚙️ Logistics & Operations",
+        "model": "llama2",
+        "system_prompt": "You are a supply chain and operational resilience expert. Analyze disruptions to logistics, transportation, infrastructure, and critical systems. Focus on: port operations, air corridors, energy infrastructure, semiconductor supplies, food security, and systemic vulnerability chains.",
+        "weight": 1.0
+      },
+      {
+        "name": "📊 Risk Assessor",
+        "model": "llama2",
+        "system_prompt": "You are a risk analyst specializing in threat escalation and contingency planning. Assess probability of event escalation, cascading failures, and second-order effects. Focus on: escalation pathways, worst-case scenarios, critical inflection points, threshold breaches, and stabilizing vs destabilizing factors.",
+        "weight": 1.1
+      }
+    ]
+  }
+}

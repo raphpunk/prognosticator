@@ -1,0 +1,10 @@
+feedparser
+pandas
+scikit-learn
+spacy
+dateparser
+python-dateutil
+pyyaml
+streamlit
+beautifulsoup4
+tldextract
