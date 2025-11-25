@@ -383,3 +383,114 @@ class ReputationTracker:
             "dissent_percentage": dissent_percentage,
             "requires_review": dissent_percentage > 0.4
         }
+    
+    def validate_prediction(
+        self,
+        prediction_id: str,
+        predicted_probability: float,
+        predicted_confidence: float,
+        actual_outcome: bool,
+        outcome_context: Optional[str] = None
+    ) -> Dict[str, float]:
+        """Validate a prediction against actual outcome and update reputation.
+        
+        This method compares predicted probability to actual outcome, calculates
+        accuracy metrics, and updates agent reputation accordingly.
+        
+        Args:
+            prediction_id: Unique identifier for the prediction
+            predicted_probability: Predicted probability (0.0-1.0)
+            predicted_confidence: Agent's confidence in prediction (0.0-1.0)
+            actual_outcome: Whether event occurred (True) or not (False)
+            outcome_context: Optional context about the outcome
+            
+        Returns:
+            Dictionary with validation metrics including accuracy_score,
+            calibration_error, outcome_match, brier_score, and outcome_classification
+        """
+        # Calculate Brier score (lower is better, 0 = perfect)
+        # Brier score = (predicted_prob - actual)^2
+        actual_value = 1.0 if actual_outcome else 0.0
+        brier_score = (predicted_probability - actual_value) ** 2
+        
+        # Convert Brier score to accuracy score (higher is better, 1 = perfect)
+        # accuracy_score = 1 - brier_score
+        accuracy_score = 1.0 - brier_score
+        
+        # Check if prediction direction was correct
+        # If predicted >0.5 and event happened, or predicted <0.5 and didn't happen
+        prediction_direction = predicted_probability > 0.5
+        outcome_match = prediction_direction == actual_outcome
+        
+        # Calculate calibration error (how well confidence matched actual accuracy)
+        calibration_error = abs(predicted_confidence - accuracy_score)
+        
+        # Determine outcome classification
+        if outcome_match:
+            if accuracy_score > 0.8:
+                outcome = "correct"
+            else:
+                outcome = "partial"  # Right direction but poor calibration
+        else:
+            outcome = "incorrect"
+        
+        # Record the outcome
+        self.record_outcome(
+            prediction_id=prediction_id,
+            outcome=outcome,
+            accuracy_score=accuracy_score
+        )
+        
+        return {
+            "accuracy_score": accuracy_score,
+            "brier_score": brier_score,
+            "calibration_error": calibration_error,
+            "outcome_match": outcome_match,
+            "outcome_classification": outcome,
+            "predicted_probability": predicted_probability,
+            "predicted_confidence": predicted_confidence,
+            "actual_outcome": actual_outcome
+        }
+    
+    def batch_validate_predictions(
+        self,
+        validations: List[Dict]
+    ) -> Dict:
+        """Validate multiple predictions in batch.
+        
+        Args:
+            validations: List of validation dicts with keys:
+                - prediction_id
+                - predicted_probability
+                - predicted_confidence
+                - actual_outcome
+                - outcome_context (optional)
+                
+        Returns:
+            Dictionary with batch validation summary
+        """
+        results = []
+        total_accuracy = 0.0
+        correct_count = 0
+        
+        for val in validations:
+            result = self.validate_prediction(
+                prediction_id=val["prediction_id"],
+                predicted_probability=val["predicted_probability"],
+                predicted_confidence=val["predicted_confidence"],
+                actual_outcome=val["actual_outcome"],
+                outcome_context=val.get("outcome_context")
+            )
+            results.append(result)
+            total_accuracy += result["accuracy_score"]
+            if result["outcome_match"]:
+                correct_count += 1
+        
+        return {
+            "total_predictions": len(validations),
+            "correct_predictions": correct_count,
+            "accuracy_rate": correct_count / len(validations) if validations else 0.0,
+            "average_accuracy_score": total_accuracy / len(validations) if validations else 0.0,
+            "results": results
+        }
+

@@ -28,6 +28,7 @@ from forecasting.domain_consensus import DomainClassifier
 from forecasting.performance_tracker import PerformanceTracker
 from forecasting.reputation import ReputationTracker
 from forecasting.ollama_resilience import with_circuit_breaker, with_retry_and_timeout
+from forecasting.meta_analyst import MetaAnalystAgent
 
 def _load_json(path: str) -> Dict:
     if not os.path.exists(path):
@@ -93,13 +94,13 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
         {
             "name": "📈 Time-Series Specialist",
             "role": "You are a time-series forecasting expert using advanced statistical methods. Detect patterns, trends, and anomalies in temporal data. Focus on: autocorrelation patterns, seasonality, structural breaks, and prediction intervals. Use statistical rigor.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.0,
         },
         {
             "name": "🎖️ Military Strategy Expert",
             "role": "You are a military strategist and conflict analyst. Assess military capabilities, force posture, and strategic intentions. Focus on: weapons systems, doctrine, force deployment, naval/air operations, and escalation dynamics. Provide tactical and strategic insights.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.2,
         },
         {
@@ -123,7 +124,7 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
         {
             "name": "👥 Societal Dynamics Expert",
             "role": "You are a sociologist and civil dynamics analyst. Forecast social movements, protests, and regime stability. Focus on: inequality trends, youth unemployment, demographic pressure, ethnic tensions, and social fragmentation. Assess civil unrest probability.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.0,
         },
         {
@@ -153,7 +154,7 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
         {
             "name": "🌐 Network & Infrastructure Analyst",
             "role": "You are a critical infrastructure and network resilience expert. Analyze telecommunications, power grids, and digital backbone vulnerabilities. Focus on: grid stability, network outages, infrastructure attacks, and system dependencies.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.0,
         },
         {
@@ -163,6 +164,35 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
             "weight": 3.0,
         },
     ]
+
+
+def get_required_models(config_path: str = "feeds.json") -> List[Tuple[str, str]]:
+    """Extract unique (model, description) tuples from agent profiles.
+    
+    Returns:
+        List of (model_name, description) tuples with unique models
+    """
+    agents = load_agent_profiles(config_path)
+    
+    # Group agents by model
+    models_dict: Dict[str, List[str]] = {}
+    for agent in agents:
+        model = agent.get("model", "llama2")
+        name = agent.get("name", "Agent")
+        if model not in models_dict:
+            models_dict[model] = []
+        models_dict[model].append(name)
+    
+    # Create (model, description) tuples
+    required = []
+    for model, agent_names in models_dict.items():
+        # Truncate description if too long
+        desc = ", ".join(agent_names)
+        if len(desc) > 50:
+            desc = desc[:47] + "..."
+        required.append((model, desc))
+    
+    return required
 
 
 def load_articles(db_path: str = "data/live.db", limit: int = 500, days: Optional[int] = 7) -> List[Dict]:
@@ -618,6 +648,73 @@ def run_conversation(
         weighted_probability = weighted_probability / total_weight
         weighted_confidence = weighted_confidence / total_weight
 
+    # Phase 3.5: Meta-Analyst Quality Control
+    # Review agent outputs for depth and re-query if needed
+    meta_analyst = MetaAnalystAgent(requery_threshold=0.6, max_follow_ups=3)
+    quality_scores = meta_analyst.review_all_agents(agent_outputs, question, context)
+    quality_summary = meta_analyst.get_quality_summary(quality_scores)
+    
+    logger.info(
+        f"Meta-Analyst Review: {quality_summary['agents_passed']}/{quality_summary['total_agents']} passed, "
+        f"Avg depth: {quality_summary['avg_depth_score']:.2f}, "
+        f"Requery needed: {quality_summary['agents_need_requery']}"
+    )
+    
+    # Re-query agents that need deeper analysis
+    requeried_agents = []
+    if quality_summary['agents_need_requery'] > 0:
+        logger.info("Re-querying agents with insufficient depth...")
+        
+        # Find agents by name
+        agents_by_name = {agent['name']: agent for agent in agents}
+        
+        for agent_name, quality_score in quality_scores.items():
+            if quality_score.needs_requery:
+                agent = agents_by_name.get(agent_name)
+                if agent:
+                    logger.info(f"Re-querying {agent_name} (depth: {quality_score.depth_score:.2f})")
+                    raw_requery, parsed_requery = meta_analyst.requery_agent(
+                        agent, question, context, quality_score, call_model, ollama_cfg
+                    )
+                    
+                    # Update agent output with requeried response
+                    for i, output in enumerate(agent_outputs):
+                        if output.get("agent") == agent_name:
+                            agent_outputs[i] = {
+                                "agent": agent_name,
+                                "raw": raw_requery,
+                                "parsed": parsed_requery,
+                                "weight": output.get("weight", 1.0),
+                                "cached": False,
+                                "declined": False,
+                                "requeried": True,
+                                "original_depth": quality_score.depth_score,
+                            }
+                            requeried_agents.append(agent_name)
+                            break
+        
+        # Recalculate weighted metrics after requery
+        total_weight = 0
+        weighted_probability = 0
+        weighted_confidence = 0
+        for result in agent_outputs:
+            if not result.get("declined"):
+                weight = result.get("weight", 1.0)
+                total_weight += weight
+                if result.get("parsed") and isinstance(result["parsed"], dict):
+                    prob = result["parsed"].get("probability")
+                    conf = result["parsed"].get("confidence")
+                    if isinstance(prob, (int, float)):
+                        weighted_probability += prob * weight
+                    if isinstance(conf, (int, float)):
+                        weighted_confidence += conf * weight
+        
+        if total_weight > 0:
+            weighted_probability = weighted_probability / total_weight
+            weighted_confidence = weighted_confidence / total_weight
+        
+        logger.info(f"Requeried {len(requeried_agents)} agents: {requeried_agents}")
+
     # Phase 4: Synthesize expert opinions
     briefs_text = json.dumps(
         {item["agent"]: item.get("parsed") or item.get("raw") for item in agent_outputs},
@@ -798,6 +895,13 @@ def run_conversation(
         "prediction_id": report.metadata.prediction_id if report else None,
         "reputation_consensus": reputation_consensus,
         "requires_review": reputation_consensus.get("requires_review", False) if reputation_consensus else False,
+        "quality_scores": {name: {
+            "depth_score": score.depth_score,
+            "needs_requery": score.needs_requery,
+            "red_flags": score.red_flags,
+        } for name, score in quality_scores.items()},
+        "quality_summary": quality_summary,
+        "requeried_agents": requeried_agents if 'requeried_agents' in locals() else [],
     }
 
 
@@ -805,4 +909,5 @@ __all__ = [
     "run_conversation",
     "load_agent_profiles",
     "load_ollama_config",
+    "get_required_models",
 ]

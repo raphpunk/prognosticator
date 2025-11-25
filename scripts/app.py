@@ -23,7 +23,7 @@ SRC_PATH = PROJECT_ROOT / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
-from forecasting.agents import run_conversation, load_agent_profiles
+from forecasting.agents import run_conversation, load_agent_profiles, get_required_models
 from forecasting.ollama_utils import list_models_http, pull_model_http, test_ollama_connection
 
 
@@ -49,15 +49,8 @@ def render_model_pull_ui(host: str, port: int, available_models: Optional[List[s
     st.markdown("### 📥 Model Manager")
     st.caption("Pull specialized models for expert analysis")
     
-    # Required models for forecasting expert corps
-    required_models = [
-        ("gemma:2b", "Macro Risk, Energy, Historical, Climate"),
-        ("qwen2.5:0.5b-instruct", "Demand & Logistics Forecaster"),
-        ("gemma:2b", "Financial Market Forecaster"),
-        ("qwen2.5:0.5b", "Military Strategy, Societal Dynamics"),
-        ("qwen2.5:0.5b", "Time-Series Specialist"),
-        ("mistral:7b", "Technology & Cyber Expert"),
-    ]
+    # Get required models from agent profiles (no hardcoding!)
+    required_models = get_required_models(config_path="feeds.json")
     
     # Get currently available models
     available = available_models if available_models is not None else list_models_http(host or "http://localhost", int(port) or 11434, None)
@@ -161,13 +154,13 @@ def render_expert_roster_integrated(host: str, port: int, available_models: List
         {
             "name": "📈 Time-Series Specialist",
             "role": "You are a time-series forecasting expert using advanced statistical methods. Detect patterns, trends, and anomalies in temporal data. Focus on: autocorrelation patterns, seasonality, structural breaks, and prediction intervals. Use statistical rigor.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.0,
         },
         {
             "name": "🎖️ Military Strategy Expert",
             "role": "You are a military strategist and conflict analyst. Assess military capabilities, force posture, and strategic intentions. Focus on: weapons systems, doctrine, force deployment, naval/air operations, and escalation dynamics. Provide tactical and strategic insights.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.2,
         },
         {
@@ -191,7 +184,7 @@ def render_expert_roster_integrated(host: str, port: int, available_models: List
         {
             "name": "👥 Societal Dynamics Expert",
             "role": "You are a sociologist and civil dynamics analyst. Forecast social movements, protests, and regime stability. Focus on: inequality trends, youth unemployment, demographic pressure, ethnic tensions, and social fragmentation. Assess civil unrest probability.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.0,
         },
         {
@@ -221,7 +214,7 @@ def render_expert_roster_integrated(host: str, port: int, available_models: List
         {
             "name": "🌐 Network & Infrastructure Analyst",
             "role": "You are a critical infrastructure and network resilience expert. Analyze telecommunications, power grids, and digital backbone vulnerabilities. Focus on: grid stability, network outages, infrastructure attacks, and system dependencies.",
-            "model": "qwen2.5:0.5b",
+            "model": "qwen2.5:0.5b-instruct",
             "weight": 1.0,
         },
         {
@@ -1387,7 +1380,7 @@ def render_model_install_tab() -> None:
     with col1:
         model_name = st.text_input(
             "Model Name",
-            placeholder="e.g., llama2, mistral, gemma:2b, qwen2.5:0.5b",
+            placeholder="e.g., llama2, mistral, gemma:2b, qwen2.5:0.5b-instruct",
             help="Enter the exact model name from Ollama library"
         )
     
