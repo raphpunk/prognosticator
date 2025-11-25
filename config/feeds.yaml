@@ -1,0 +1,99 @@
+# Prognosticator Trending Feeds Configuration
+# ============================================
+# This file configures RSS feeds and scrapers for trending signal ingestion.
+
+# RSS Feed Sources
+# ----------------
+# Each feed requires: name, url, and enabled flag
+# Optional: max_items (default: 50)
+
+rss_feeds:
+  # Trend aggregators
+  - name: trend_hunter
+    url: https://www.trendhunter.com/rss
+    enabled: true
+    max_items: 30
+    description: "Emerging consumer trends and innovations"
+  
+  # Tech & Startup trends
+  - name: hackernews_best
+    url: https://news.ycombinator.com/rss
+    enabled: true
+    max_items: 50
+    description: "Hacker News top stories"
+  
+  - name: techcrunch
+    url: https://feeds.feedburner.com/TechCrunch/
+    enabled: true
+    max_items: 50
+    description: "Technology news and startup trends"
+  
+  # Social & Discussion trends
+  - name: reddit_worldnews
+    url: https://www.reddit.com/r/worldnews/.rss
+    enabled: true
+    max_items: 25
+    description: "Reddit world news discussions"
+  
+  - name: reddit_technology
+    url: https://www.reddit.com/r/technology/.rss
+    enabled: false
+    max_items: 25
+    description: "Reddit technology discussions"
+  
+  # Product trends
+  - name: producthunt_daily
+    url: https://www.producthunt.com/feed
+    enabled: true
+    max_items: 20
+    description: "Daily featured products"
+  
+  # Financial trends
+  - name: marketwatch_topstories
+    url: https://feeds.marketwatch.com/marketwatch/topstories/
+    enabled: true
+    max_items: 30
+    description: "MarketWatch top financial stories"
+  
+  - name: bloomberg_markets
+    url: https://feeds.bloomberg.com/markets/news.rss
+    enabled: false
+    max_items: 30
+    description: "Bloomberg market news"
+
+# Web Scrapers
+# ------------
+# Scrapers for sources without RSS feeds
+
+scrapers:
+  # Google Trends via pytrends API
+  google_trends:
+    enabled: true
+    geo: US  # Country code: US, GB, DE, etc. Use "" for global
+    timeframe: now 1-d  # Options: now 1-d, today 5-y, etc.
+    max_trends: 20
+    description: "Real-time Google search trends"
+  
+  # Exploding Topics scraper
+  # Note: May be unreliable due to site structure changes
+  exploding_topics:
+    enabled: false  # Disabled by default
+    categories:
+      - technology
+      - business
+    max_topics: 15
+    description: "Rapidly growing search topics"
+
+# Rate Limiting & Caching
+# -----------------------
+rate_limit:
+  requests_per_minute: 30
+  cache_ttl_seconds: 900  # 15 minutes
+
+# Error Handling
+# --------------
+error_handling:
+  max_retries: 3
+  retry_delay_seconds: 5
+  skip_on_error: true  # Continue with other feeds if one fails
+  log_errors: true

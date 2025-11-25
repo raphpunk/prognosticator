@@ -111,7 +111,7 @@ For remote Ollama servers, change host to your server IP (e.g., `http://192.168.
 ollama pull llama2
 ollama pull gemma:2b
 ollama pull qwen2.5:0.5b-instruct
-ollama pull deepseek-r1:1.3b
+ollama pull gemma:2b
 ollama pull phi3:mini
 ollama pull mistral:7b
 ```

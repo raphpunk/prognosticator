@@ -81,7 +81,7 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
         {
             "name": "💹 Financial Market Forecaster",
             "role": "You are a quantitative financial analyst forecasting market movements from geopolitical events. Predict correlations between events and asset prices. Focus on: equity volatility, FX movements, commodity prices, credit spreads, and tail risk. Provide technical and fundamental analysis.",
-            "model": "deepseek-r1:1.3b",
+            "model": "gemma:2b",
             "weight": 1.2,
         },
         {
@@ -93,7 +93,7 @@ def load_agent_profiles(config_path: str = "feeds.json") -> List[Dict]:
         {
             "name": "📈 Time-Series Specialist",
             "role": "You are a time-series forecasting expert using advanced statistical methods. Detect patterns, trends, and anomalies in temporal data. Focus on: autocorrelation patterns, seasonality, structural breaks, and prediction intervals. Use statistical rigor.",
-            "model": "tinytimemixer",
+            "model": "qwen2.5:0.5b",
             "weight": 1.0,
         },
         {

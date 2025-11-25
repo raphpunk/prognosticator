@@ -41,7 +41,7 @@ def load_articles(db_path="data/live.db", limit=500, days=None):
         return []
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
-    query = "SELECT id, title, summary, content, source_url, published FROM articles"
+    query = "SELECT id, title, text, published, source_url FROM articles"
     params = []
     if days is not None:
         cutoff = (datetime.utcnow() - timedelta(days=days)).isoformat()
@@ -54,12 +54,11 @@ def load_articles(db_path="data/live.db", limit=500, days=None):
     conn.close()
     articles = []
     for r in rows:
-        aid, title, summary, content, source_url, published = r
-        text = "".join([s for s in [title or "", "\n", summary or "", "\n", content or ""]])
+        aid, title, text, published, source_url = r
         articles.append({
             "id": aid,
             "title": title,
-            "text": text,
+            "text": text or "",
             "source_url": source_url,
             "published": published,
         })

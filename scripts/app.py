@@ -53,9 +53,9 @@ def render_model_pull_ui(host: str, port: int, available_models: Optional[List[s
     required_models = [
         ("gemma:2b", "Macro Risk, Energy, Historical, Climate"),
         ("qwen2.5:0.5b-instruct", "Demand & Logistics Forecaster"),
-        ("deepseek-r1:1.3b", "Financial Market Forecaster"),
+        ("gemma:2b", "Financial Market Forecaster"),
         ("qwen2.5:0.5b", "Military Strategy, Societal Dynamics"),
-        ("tinytimemixer", "Time-Series Specialist"),
+        ("qwen2.5:0.5b", "Time-Series Specialist"),
         ("mistral:7b", "Technology & Cyber Expert"),
     ]
     
@@ -79,7 +79,7 @@ def render_model_pull_ui(host: str, port: int, available_models: Optional[List[s
         
         with col2:
             if not is_available:
-                if st.button(f"📥 Pull", key=f"pull_{model_name}", use_container_width=True):
+                if st.button(f"📥 Pull", key=f"pull_{model_name}", width='stretch'):
                     with st.spinner(f"Downloading {model_name}..."):
                         progress_bar = st.progress(0)
                         status_text = st.empty()
@@ -149,7 +149,7 @@ def render_expert_roster_integrated(host: str, port: int, available_models: List
         {
             "name": "💹 Financial Market Forecaster",
             "role": "You are a quantitative financial analyst forecasting market movements from geopolitical events. Predict correlations between events and asset prices. Focus on: equity volatility, FX movements, commodity prices, credit spreads, and tail risk. Provide technical and fundamental analysis.",
-            "model": "deepseek-r1:1.3b",
+            "model": "gemma:2b",
             "weight": 1.2,
         },
         {
@@ -161,7 +161,7 @@ def render_expert_roster_integrated(host: str, port: int, available_models: List
         {
             "name": "📈 Time-Series Specialist",
             "role": "You are a time-series forecasting expert using advanced statistical methods. Detect patterns, trends, and anomalies in temporal data. Focus on: autocorrelation patterns, seasonality, structural breaks, and prediction intervals. Use statistical rigor.",
-            "model": "tinytimemixer",
+            "model": "qwen2.5:0.5b",
             "weight": 1.0,
         },
         {
@@ -255,7 +255,7 @@ def render_expert_roster_integrated(host: str, port: int, available_models: List
         
         with col_action:
             if not is_available:
-                if st.button("📥 Pull", key=f"pull_model_{model_name}", help=f"Download {model_name}", use_container_width=True):
+                if st.button("📥 Pull", key=f"pull_model_{model_name}", help=f"Download {model_name}", width='stretch'):
                     with st.spinner(f"Downloading {model_name}..."):
                         progress_bar = st.progress(0)
                         status_text = st.empty()
@@ -378,7 +378,7 @@ def render_expert_roster_sidebar(host: str, port: int, available_models: List[st
                     st.success(f"✅ {model_name}", icon="✅")
                 else:
                     st.warning(f"⚠️ {model_name}")
-                    if st.button("📥 Pull", key=f"pull_{slug}", help="Download model to Ollama", use_container_width=True):
+                    if st.button("📥 Pull", key=f"pull_{slug}", help="Download model to Ollama", width='stretch'):
                         with st.spinner(f"Pulling {model_name}..."):
                             success, message = pull_model_http(host, port, model_name)
                         if success:
@@ -426,6 +426,9 @@ def load_stats(db_path: str = "data/live.db") -> pd.DataFrame:
         conn = sqlite3.connect(str(db_path_obj))
         df_articles = pd.read_sql_query("SELECT published, source_url, content_hash FROM articles", conn)
         conn.close()
+        # Convert published to datetime to avoid type comparison errors
+        if not df_articles.empty and 'published' in df_articles.columns:
+            df_articles['published'] = pd.to_datetime(df_articles['published'], utc=True, errors='coerce')
         return df_articles
     except Exception:
         return pd.DataFrame()
@@ -459,7 +462,7 @@ def render_ai_settings(cfg: Dict[str, Any]) -> None:
 
         # Test connection button
         st.markdown("---")
-        if st.button("🧪 Test Connection", use_container_width=True):
+        if st.button("🧪 Test Connection", width='stretch'):
             with st.spinner("Testing connection..."):
                 result = test_ollama_connection(effective_host, effective_port, None)
                 if result["success"]:
@@ -485,12 +488,12 @@ def render_ai_settings(cfg: Dict[str, Any]) -> None:
             models = list_models_http(effective_host, effective_port, None)
             st.session_state["ollama_models"] = models
 
-        if st.button("🔄 Refresh Models", use_container_width=True):
+        if st.button("🔄 Refresh Models", width='stretch'):
             refresh_models()
             st.rerun()
 
         # Save connection settings
-        if st.button("💾 Save Connection", use_container_width=True):
+        if st.button("💾 Save Connection", width='stretch'):
             cfg["ollama"] = cfg.get("ollama", {})
             cfg["ollama"]["host"] = host_input
             cfg["ollama"]["port"] = int(port_input)
@@ -570,7 +573,7 @@ def render_dashboard_tab(db_path: str) -> None:
         with st.expander("📄 Recent Articles"):
             if not df_articles.empty:
                 df_show = df_articles.sort_values(by="published", ascending=False).head(200)[["published", "reg_domain", "source_url"]]
-                st.dataframe(df_show, use_container_width=True, height=400)
+                st.dataframe(df_show, width='stretch', height=400)
     else:
         st.info("Click 'Refresh Data' to load statistics.")
 
@@ -1145,7 +1148,7 @@ def render_prediction_review_tab() -> None:
                 })
             
             df = pd.DataFrame(agent_summary)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width='stretch', hide_index=True)
             
             # Detailed responses
             with st.expander("📄 View Full Agent Responses"):
@@ -1349,7 +1352,7 @@ def render_model_config_tab() -> None:
         col_test, col_save = st.columns(2)
         
         with col_test:
-            if st.button("🧪 Test Connection", use_container_width=True):
+            if st.button("🧪 Test Connection", width='stretch'):
                 with st.spinner("Testing..."):
                     result = test_ollama_connection(effective_host, effective_port, None)
                     if result["success"]:
@@ -1358,7 +1361,7 @@ def render_model_config_tab() -> None:
                         st.error(f"❌ {result['status']}: {result['details']}")
         
         with col_save:
-            if st.button("💾 Save & Refresh", use_container_width=True):
+            if st.button("💾 Save & Refresh", width='stretch'):
                 cfg["ollama"] = {"host": host_input, "port": int(port_input), "mode": "http"}
                 save_feeds_config(cfg)
                 st.session_state["ollama_models"] = list_models_http(effective_host, effective_port, None)
@@ -1384,13 +1387,13 @@ def render_model_install_tab() -> None:
     with col1:
         model_name = st.text_input(
             "Model Name",
-            placeholder="e.g., llama2, mistral, gemma:2b, deepseek-r1:1.3b",
+            placeholder="e.g., llama2, mistral, gemma:2b, qwen2.5:0.5b",
             help="Enter the exact model name from Ollama library"
         )
     
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)  # Vertical alignment
-        if st.button("📥 Download Model", type="primary", use_container_width=True, disabled=not model_name):
+        if st.button("📥 Download Model", type="primary", width='stretch', disabled=not model_name):
             if not model_name:
                 st.warning("⚠️ Please enter a model name")
             else:
@@ -1415,54 +1418,78 @@ def render_model_install_tab() -> None:
 
 
 def render_local_threats_tab() -> None:
-    """Render local threat monitoring interface with dynamic zip code lookup."""
+    """Render local threat monitoring interface with dynamic location lookup."""
     st.subheader("🚨 Local Threat Monitoring")
-    st.markdown("Real-time police dispatch monitoring for Virginia jurisdictions")
+    st.markdown("Real-time police dispatch monitoring for configured jurisdictions")
     
     try:
-        from forecasting.local_threats import get_available_zip_codes, get_jurisdictions
+        from forecasting.local_threats import get_available_zip_codes, get_jurisdictions, get_jurisdiction_for_zip
         from forecasting.local_threat_integration import fetch_local_threat_feeds_with_health_tracking
     except ImportError:
         st.error("❌ Local threat module not available. Ensure Playwright is installed: `pip install playwright`")
         return
     
-    # Get available jurisdictions and zip codes
-    available_zips = get_available_zip_codes()
+    # Get available jurisdictions and identifiers
+    available_identifiers = get_available_zip_codes()
     available_jurisdictions = get_jurisdictions()
+    
+    if not available_identifiers and not available_jurisdictions:
+        st.warning("⚠️ No jurisdictions configured. See config/dispatch_jurisdictions.json")
+        st.info("Add your jurisdictions to the configuration file to enable local threat monitoring.")
+        return
     
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("#### Search by Zip Code")
-        zip_input = st.text_input(
-            "Enter Virginia Zip Code",
-            placeholder="e.g., 23112 for Chesterfield",
-            key="local_threat_zip"
+        st.markdown("#### Search by Identifier")
+        identifier_input = st.text_input(
+            "Enter Location Identifier",
+            placeholder="e.g., zip code, area code, or district ID",
+            key="local_threat_identifier"
         )
         
-        if zip_input:
-            if zip_input in available_zips:
-                st.success(f"✓ Found: **{available_zips[zip_input]}** County/City")
+        discovered_jurisdiction = None
+        if identifier_input:
+            if identifier_input in available_identifiers:
+                st.success(f"✓ Found (preconfigured): **{available_identifiers[identifier_input]}**")
+                discovered_jurisdiction = available_identifiers[identifier_input]
             else:
-                st.warning(f"⚠️ Zip code {zip_input} not in database")
-                st.caption(f"Available: {', '.join(list(available_zips.keys())[:5])}...")
+                # Try LLM discovery
+                with st.spinner("🔍 Searching for jurisdiction via LLM..."):
+                    discovered_jurisdiction = get_jurisdiction_for_zip(identifier_input, use_llm=True)
+                    if discovered_jurisdiction:
+                        st.success(f"✓ Discovered: **{discovered_jurisdiction}**")
+                    else:
+                        st.warning(f"⚠️ Could not find jurisdiction for '{identifier_input}'")
+                        st.caption(f"Preconfigured: {', '.join(list(available_identifiers.keys())[:5])}...")
     
     with col2:
         st.markdown("#### Search by Jurisdiction")
         jurisdiction_select = st.selectbox(
             "Select Jurisdiction",
-            ["All Jurisdictions"] + available_jurisdictions,
+            ["All Configured"] + available_jurisdictions,
             key="local_threat_jurisdiction"
         )
     
-    if st.button("🔍 Fetch Local Threats", use_container_width=True):
+    if st.button("🔍 Fetch Local Threats", width='stretch'):
         with st.spinner("Scraping dispatch feeds..."):
             try:
-                # Use zip code if provided, otherwise all
-                zip_to_use = zip_input if zip_input and zip_input in available_zips else None
+                # Determine which identifier/jurisdiction to use
+                identifier_to_use = None
+                
+                if identifier_input:
+                    # Use discovered or preconfigured identifier
+                    if identifier_input in available_identifiers or discovered_jurisdiction:
+                        identifier_to_use = identifier_input
+                elif jurisdiction_select != "All Configured":
+                    # Find first identifier for selected jurisdiction
+                    for z, j in available_identifiers.items():
+                        if j == jurisdiction_select:
+                            identifier_to_use = z
+                            break
                 
                 feed_items = fetch_local_threat_feeds_with_health_tracking(
-                    zip_code=zip_to_use,
+                    zip_code=identifier_to_use,
                     lookback_hours=6,
                     tracker_db_path="data/local_threats.db",
                     health_db_path="data/feed_health.db"
@@ -1518,13 +1545,16 @@ def render_local_threats_tab() -> None:
                 st.caption("Check that Playwright is installed and dispatch sites are accessible")
     
     st.markdown("---")
-    st.markdown("#### Available Jurisdictions")
+    st.markdown("#### Configured Jurisdictions")
     
-    cols = st.columns(len(available_jurisdictions))
-    for idx, jurisdiction in enumerate(available_jurisdictions):
-        with cols[idx]:
-            zips_for_jurisdiction = [z for z, j in available_zips.items() if j == jurisdiction]
-            st.info(f"**{jurisdiction}**\nZips: {', '.join(zips_for_jurisdiction[:3])}")
+    if available_jurisdictions:
+        cols = st.columns(min(len(available_jurisdictions), 4))
+        for idx, jurisdiction in enumerate(available_jurisdictions):
+            with cols[idx % len(cols)]:
+                identifiers_for_jurisdiction = [z for z, j in available_identifiers.items() if j == jurisdiction]
+                st.info(f"**{jurisdiction}**\nIDs: {', '.join(identifiers_for_jurisdiction[:2])}")
+    else:
+        st.info("No jurisdictions configured yet. Add them to config/dispatch_jurisdictions.json")
 
 
 def main() -> None:
@@ -1565,6 +1595,19 @@ def main() -> None:
     st.markdown(hide_streamlit_style, unsafe_allow_html=True)
     
     st.title("🔮 Event Forecasting Console")
+    # Display active remote model status (GPT-5 global enablement)
+    try:
+        from forecasting.dispatch_discovery import load_model_config, is_model_globally_enabled
+        cfg_model = load_model_config()
+        model_name = cfg_model.get("model_name", "gpt-5")
+        enabled = is_model_globally_enabled()
+        endpoint = cfg_model.get("remote_llm_endpoint") or "(no endpoint configured)"
+        status_str = f"🧠 Model: {model_name} • {'Enabled' if enabled else 'Disabled'}"
+        st.caption(status_str)
+        if enabled:
+            st.caption(f"Remote LLM Endpoint: {endpoint}")
+    except Exception:
+        st.caption("🧠 Model: (config not loaded)")
     
     cfg = load_feeds_config()
     db_path = st.sidebar.text_input("DB Path", "data/live.db")
@@ -1572,7 +1615,21 @@ def main() -> None:
     # Quick start checklist in sidebar
     with st.sidebar.expander("🚦 Quick Start", expanded=True):
         feeds_ok = bool(cfg.get("feeds"))
-        models_ok = bool(cfg.get("ollama", {}).get("models", []))
+        
+        # Check if Ollama is configured and models are available
+        models_ok = False
+        try:
+            from forecasting.ollama_utils import list_models_http
+            ollama_cfg = cfg.get("ollama", {})
+            host = ollama_cfg.get("host", "http://localhost")
+            port = int(ollama_cfg.get("port", 11434))
+            if not host.startswith("http"):
+                host = f"http://{host}"
+            models = list_models_http(host.rstrip("/"), port, None)
+            models_ok = len(models) > 0
+        except Exception:
+            models_ok = False
+        
         try:
             df_tmp = load_stats(db_path)
             data_ok = len(df_tmp) > 0
@@ -1580,7 +1637,7 @@ def main() -> None:
             data_ok = False
 
         st.markdown(f"- {'✅' if feeds_ok else '⬜'} Feeds configured")
-        st.markdown(f"- {'✅' if models_ok else '⬜'} Models configured")
+        st.markdown(f"- {'✅' if models_ok else '⬜'} Models available")
         st.markdown(f"- {'✅' if data_ok else '⬜'} Data present")
 
     # Navigation tabs

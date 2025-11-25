@@ -1,7 +1,10 @@
 """Local threat monitoring via police dispatch feed integration.
 
-Scrapes real-time police dispatch data from Virginia jurisdictions and correlates
-with geopolitical threat patterns.
+Scrapes real-time police dispatch data from any configurable jurisdictions
+and correlates with geopolitical threat patterns.
+
+Uses dispatch_discovery module to load verified dispatch URLs from
+preconfigured sources or cached LLM discoveries. Supports any geographic region.
 """
 import re
 import json
@@ -10,41 +13,88 @@ import hashlib
 import logging
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, asdict
 from collections import Counter
 
 logger = logging.getLogger(__name__)
 
-# Jurisdiction mapping: zip code -> dispatch URLs
-JURISDICTION_MAP = {
-    # Chesterfield County
-    "23112": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
-    "23831": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
-    "23832": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
-    "23834": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
-    "23235": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
-    "23236": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
-    "23237": ["https://www.chesterfield.gov/3999/Active-Police-Calls"],
+# Import discovery module for accessing configured jurisdictions
+try:
+    from .dispatch_discovery import (
+        load_preconfigured_jurisdictions,
+        get_jurisdiction_urls,
+        discover_and_cache_dispatch_urls,
+        is_model_globally_enabled
+    )
+    from .zip_prefix_fallback import lookup_state_for_zip  # type: ignore
+except ImportError:
+    # Fallback if dispatch_discovery not available
+    def load_preconfigured_jurisdictions(path: str = "config/dispatch_jurisdictions.json") -> Dict:
+        config_file = Path(path)
+        if not config_file.exists():
+            config_file = Path(__file__).parent.parent.parent / path
+        if config_file.exists():
+            with open(config_file, 'r') as f:
+                return json.load(f).get("jurisdictions", {})
+        return {}
+    # Stubs to avoid unbound references when discovery module not present
+    def discover_and_cache_dispatch_urls(
+        jurisdiction: str,
+        cache_db: str = "data/dispatch_cache.db",
+        model: str = "phi3:mini",
+        ttl_hours: int = 168
+    ) -> Dict[str, Any]:  # type: ignore
+        return {"urls": [], "jurisdiction_name": jurisdiction, "urls": []}
+    def is_model_globally_enabled() -> bool:  # type: ignore
+        return False
+    def lookup_state_for_zip(zip_code: str) -> Optional[str]:  # type: ignore
+        return None
+
+
+def load_dispatch_config(config_path: str = "config/dispatch_jurisdictions.json") -> Dict:
+    """Load dispatch jurisdiction configuration from preconfigured source.
     
-    # Richmond City
-    "23220": ["https://apps.richmondgov.com/applications/activecalls"],
-    "23221": ["https://apps.richmondgov.com/applications/activecalls"],
-    "23222": ["https://apps.richmondgov.com/applications/activecalls"],
-    "23223": ["https://apps.richmondgov.com/applications/activecalls"],
-    "23224": ["https://apps.richmondgov.com/applications/activecalls"],
-    "23225": ["https://apps.richmondgov.com/applications/activecalls"],
+    Uses dispatch_discovery to load verified jurisdictions.
     
-    # Henrico County
-    "23228": ["https://henrico.us/police/active-calls/"],
-    "23229": ["https://henrico.us/police/active-calls/"],
-    "23230": ["https://henrico.us/police/active-calls/"],
-    "23233": ["https://henrico.us/police/active-calls/"],
-    "23294": ["https://henrico.us/police/active-calls/"],
+    Args:
+        config_path: Path to dispatch_jurisdictions.json (for compatibility)
+        
+    Returns:
+        Configuration dict with jurisdictions key
+    """
+    jurisdictions = load_preconfigured_jurisdictions(config_path)
+    return {"jurisdictions": jurisdictions}
+
+
+def build_jurisdiction_map_from_config(config: Dict) -> Dict[str, List[str]]:
+    """Build identifier -> URLs mapping from config.
     
-    # Colonial Heights
-    "23834": ["https://www.colonialheightsva.gov/police"],
-}
+    Converts config format to legacy JURISDICTION_MAP format for backward compatibility.
+    
+    Args:
+        config: Configuration dict from load_dispatch_config()
+        
+    Returns:
+        Dict mapping identifiers (zip codes, area codes, etc.) to dispatch URLs
+    """
+    result = {}
+    
+    for jurisdiction_key, jurisdiction_data in config.get("jurisdictions", {}).items():
+        urls = jurisdiction_data.get("dispatch_urls", [])
+        identifiers = jurisdiction_data.get("identifiers", [])
+        
+        for identifier in identifiers:
+            if identifier not in result:
+                result[identifier] = []
+            result[identifier].extend(urls)
+    
+    return result
+
+
+# Load configuration using discovery module
+_CONFIG = load_dispatch_config()
+JURISDICTION_MAP = build_jurisdiction_map_from_config(_CONFIG)
 
 # Incident severity mapping (1=routine, 5=critical)
 INCIDENT_SEVERITY = {
@@ -800,50 +850,88 @@ def convert_to_feed_format(calls: List[DispatchCall], min_severity: int = 3) -> 
     return feed_items
 
 
-def get_jurisdiction_for_zip(zip_code: str) -> Optional[str]:
-    """Get jurisdiction name for a zip code."""
-    urls = JURISDICTION_MAP.get(zip_code, [])
-    if not urls:
-        return None
+def get_jurisdiction_for_zip(identifier: str, use_llm: bool = True) -> Optional[str]:
+    """Get jurisdiction name for an identifier (zip code, area code, etc.).
     
-    url = urls[0]
-    if "chesterfield" in url:
-        return "Chesterfield"
-    elif "rva.gov" in url or "richmond" in url:
-        return "Richmond"
-    elif "henrico" in url:
-        return "Henrico"
-    elif "colonialheights" in url:
-        return "Colonial Heights"
+    First checks preconfigured identifiers, then uses LLM discovery if needed.
+    
+    Args:
+        identifier: The location identifier (zip code, area code, etc.)
+        use_llm: Whether to use LLM discovery for unknown identifiers
+        
+    Returns:
+        Jurisdiction name from config or discovered via LLM, or None if not found
+    """
+    # Check preconfigured first
+    urls = JURISDICTION_MAP.get(identifier, [])
+    if urls:
+        # Find matching jurisdiction in config
+        for jurisdiction_key, jurisdiction_data in _CONFIG.get("jurisdictions", {}).items():
+            if identifier in jurisdiction_data.get("identifiers", []):
+                return jurisdiction_data.get("name", jurisdiction_key)
+    
+    # Try LLM discovery for unknown identifiers
+    if use_llm and is_model_globally_enabled():
+        try:
+            logger.info(f"Attempting LLM discovery for identifier: {identifier}")
+            result = discover_and_cache_dispatch_urls(
+                f"What jurisdiction has {identifier} as a zip code or area code?",
+                ttl_hours=24
+            )
+            if result.get("urls") and result.get("jurisdiction_name"):
+                return result.get("jurisdiction_name")
+        except Exception as e:
+            logger.debug(f"LLM discovery failed for {identifier}: {e}")
+
+    # Fallback heuristic: infer state from ZIP prefix and attempt largest city dispatch discovery
+    if identifier.isdigit() and len(identifier) >= 5:
+        state = None
+        try:
+            state = lookup_state_for_zip(identifier)
+        except Exception:
+            state = None
+        if state:
+            logger.info(f"Heuristic inferred state '{state}' for ZIP {identifier}; attempting city dispatch discovery")
+            if use_llm and is_model_globally_enabled():
+                # Attempt discovery for largest city in state
+                try:
+                    discovery_target = f"largest city police dispatch in {state} USA"
+                    result2 = discover_and_cache_dispatch_urls(discovery_target, ttl_hours=24)
+                    if result2.get("urls") and result2.get("jurisdiction_name"):
+                        return result2.get("jurisdiction_name")
+                except Exception as e:
+                    logger.debug(f"Heuristic LLM city discovery failed for state {state}: {e}")
+            # If model disabled, provide generic state placeholder
+            return f"{state} (state inferred)"
     
     return None
 
 
 def get_available_zip_codes() -> Dict[str, str]:
-    """Get all available Virginia zip codes and their jurisdictions.
+    """Get all available identifiers and their jurisdictions from configuration.
     
     Returns:
-        Dict mapping zip code to jurisdiction name
+        Dict mapping identifier (zip code, area code, etc.) to jurisdiction name
     """
     result = {}
-    for zip_code, urls in JURISDICTION_MAP.items():
-        jurisdiction = get_jurisdiction_for_zip(zip_code)
+    for identifier, urls in JURISDICTION_MAP.items():
+        jurisdiction = get_jurisdiction_for_zip(identifier)
         if jurisdiction:
-            result[zip_code] = jurisdiction
+            result[identifier] = jurisdiction
     return result
 
 
 def get_jurisdictions() -> List[str]:
-    """Get list of unique jurisdictions available.
+    """Get list of unique jurisdictions available from configuration.
     
     Returns:
         List of jurisdiction names
     """
     jurisdictions = set()
-    for zip_code in JURISDICTION_MAP.keys():
-        jurisdiction = get_jurisdiction_for_zip(zip_code)
-        if jurisdiction:
-            jurisdictions.add(jurisdiction)
+    for jurisdiction_key, jurisdiction_data in _CONFIG.get("jurisdictions", {}).items():
+        name = jurisdiction_data.get("name")
+        if name:
+            jurisdictions.add(name)
     return sorted(list(jurisdictions))
 
 

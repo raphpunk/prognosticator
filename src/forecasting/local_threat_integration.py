@@ -26,12 +26,14 @@ def fetch_local_threat_feeds(
     This function:
     1. Initializes the LocalThreatTracker
     2. Scrapes dispatch data for specified zip code or all jurisdictions
-    3. Detects threat patterns (escalation, coordination, spread)
-    4. Converts data to RSS-like feed format for pipeline integration
+    3. Uses LLM discovery if zip code is unknown
+    4. Detects threat patterns (escalation, coordination, spread)
+    5. Converts data to RSS-like feed format for pipeline integration
     
     Args:
-        zip_code: Virginia zip code to scrape (e.g., '23112' for Chesterfield)
-                 If provided, scrapes only that jurisdiction
+        zip_code: Location identifier to scrape (e.g., '23112' for zip code)
+                 Supports any identifier: zip codes, area codes, district IDs, etc.
+                 Can be unknown - will attempt LLM discovery
         jurisdictions: (Deprecated) List of jurisdiction names
                       If None, fetches all configured jurisdictions
         lookback_hours: How far back to look for pattern detection (default: 6 hours)
@@ -44,9 +46,25 @@ def fetch_local_threat_feeds(
     try:
         # Try both import styles for flexibility
         try:
-            from src.forecasting.local_threats import LocalThreatTracker, DispatchScraper
+            from src.forecasting.local_threats import (
+                LocalThreatTracker, 
+                DispatchScraper,
+                get_jurisdiction_for_zip
+            )
         except ModuleNotFoundError:
-            from forecasting.local_threats import LocalThreatTracker, DispatchScraper
+            from forecasting.local_threats import (
+                LocalThreatTracker, 
+                DispatchScraper,
+                get_jurisdiction_for_zip
+            )
+        
+        # If zip code is provided but unknown, try LLM discovery
+        if zip_code:
+            jurisdiction_result = get_jurisdiction_for_zip(zip_code, use_llm=True)
+            if not jurisdiction_result:
+                logger.warning(f"Could not find jurisdiction for identifier {zip_code}")
+                return []
+            logger.info(f"Using jurisdiction: {jurisdiction_result} for identifier {zip_code}")
         
         # Initialize tracker and scraper
         tracker = LocalThreatTracker(db_path=tracker_db_path)
@@ -56,7 +74,7 @@ def fetch_local_threat_feeds(
         try:
             all_calls = scraper.scrape_all_jurisdictions(zip_code=zip_code)
             if zip_code:
-                logger.info(f"Fetched {len(all_calls)} dispatch calls from zip code {zip_code}")
+                logger.info(f"Fetched {len(all_calls)} dispatch calls from identifier {zip_code}")
             else:
                 logger.info(f"Fetched {len(all_calls)} dispatch calls from all jurisdictions")
             
@@ -97,7 +115,7 @@ def fetch_local_threat_feeds(
     except Exception as e:
         logger.error(f"Error fetching local threat feeds: {e}", exc_info=True)
         if zip_code:
-            logger.error(f"Failed to scrape zip code {zip_code}")
+            logger.error(f"Failed to scrape identifier {zip_code}")
         return []
 
 
@@ -113,9 +131,13 @@ def fetch_local_threat_feeds_with_health_tracking(
     This is the recommended entry point for production use. It wraps fetch_local_threat_feeds
     with feed health monitoring to track reliability and detect anomalies.
     
+    Supports:
+    - Preconfigured identifiers (fast, no LLM)
+    - Unknown identifiers (queries LLM for jurisdiction)
+    
     Args:
-        zip_code: Virginia zip code to scrape (e.g., '23112')
-                 If provided, scrapes only that jurisdiction
+        zip_code: Location identifier to scrape (zip code, area code, district ID, etc.)
+                 Can be preconfigured or unknown (will attempt LLM discovery)
         jurisdictions: (Deprecated) List of jurisdiction names to scrape
         lookback_hours: Pattern detection lookback window
         tracker_db_path: Path to local threats database
@@ -131,7 +153,9 @@ def fetch_local_threat_feeds_with_health_tracking(
             from forecasting.feed_health import FeedHealthTracker
         
         # Virtual feed URL for health tracking (not a real URL)
-        feed_url = "local://dispatch/virginia"
+        feed_url = "local://dispatch/any"
+        if zip_code:
+            feed_url = f"local://dispatch/{zip_code}"
         
         # Initialize health tracker
         health_tracker = FeedHealthTracker(db_path=health_db_path)
@@ -141,7 +165,7 @@ def fetch_local_threat_feeds_with_health_tracking(
             logger.warning(f"Skipping local threat feeds due to poor health (feed_url={feed_url})")
             return []
         
-        # Fetch the data
+        # Fetch the data (with LLM discovery support)
         feed_items = fetch_local_threat_feeds(
             zip_code=zip_code,
             jurisdictions=jurisdictions,

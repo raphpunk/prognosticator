@@ -10,3 +10,4 @@ beautifulsoup4
 tldextract
 tenacity
 requests
+pytrends  # Google Trends API for trending feeds module

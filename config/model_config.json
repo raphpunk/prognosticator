@@ -1,0 +1,8 @@
+{
+  "model_name": "gpt-5",
+  "enable_for_all_clients": true,
+  "remote_llm_endpoint": "https://YOUR-LLM-GATEWAY/v1/generate",  
+  "auth_header": "Bearer REPLACE_ME",  
+  "timeout_seconds": 30,
+  "notes": "remote_llm_endpoint should accept POST {prompt:string}. Adjust adapter in dispatch_discovery.py if different."
+}

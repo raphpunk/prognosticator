@@ -1,0 +1,91 @@
+{
+  "jurisdictions": {
+    "chesterfield_county_va": {
+      "name": "Chesterfield County, Virginia",
+      "region": "Virginia",
+      "country": "USA",
+      "dispatch_urls": [
+        "https://www.chesterfield.gov/3999/Active-Police-Calls"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "23112", "23235", "23236", "23237", "23831", "23832", "23834"
+      ]
+    },
+    "richmond_city_va": {
+      "name": "Richmond, Virginia",
+      "region": "Virginia",
+      "country": "USA",
+      "dispatch_urls": [
+        "https://apps.richmondgov.com/applications/activecalls"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "23220", "23221", "23222", "23223", "23224", "23225"
+      ]
+    },
+    "henrico_county_va": {
+      "name": "Henrico County, Virginia",
+      "region": "Virginia",
+      "country": "USA",
+      "dispatch_urls": [
+        "https://henrico.us/police/active-calls/"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "23228", "23229", "23230", "23233", "23294"
+      ]
+    },
+    "colonial_heights_va": {
+      "name": "Colonial Heights, Virginia",
+      "region": "Virginia",
+      "country": "USA",
+      "dispatch_urls": [
+        "https://www.colonialheightsva.gov/police"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "23834"
+      ]
+    },
+    "_EXAMPLE_NYC_": {
+      "name": "New York City, New York",
+      "region": "New York",
+      "country": "USA",
+      "dispatch_urls": [
+        "https://maps.nyc.gov/crime"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "10001", "10002", "10003", "10004", "10005"
+      ],
+      "notes": "Uncomment and implement scraper for NYC data"
+    },
+    "_EXAMPLE_LA_": {
+      "name": "Los Angeles County, California",
+      "region": "California",
+      "country": "USA",
+      "dispatch_urls": [
+        "https://www.lasd.org/public-services/alerts/"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "90001", "90002", "90003", "90004", "90005"
+      ],
+      "notes": "Uncomment and implement scraper for LA County data"
+    },
+    "_EXAMPLE_LONDON_": {
+      "name": "Metropolitan Police, London",
+      "region": "Greater London",
+      "country": "United Kingdom",
+      "dispatch_urls": [
+        "https://www.met.police.uk/SysSiteAssets/9df61292-2362-4d18-a904-2a51e233b4d2/20200508/live-crime-map.html"
+      ],
+      "scraper_type": "table",
+      "identifiers": [
+        "EC1A", "EC1M", "EC1N", "EC1P", "EC1R", "EC1V", "EC1Y", "EC2A"
+      ],
+      "notes": "Uncomment and implement scraper for London data"
+    }
+  }
+}
