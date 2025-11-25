@@ -2,6 +2,14 @@
 """Demo script for trending feeds module.
 
 Demonstrates fetching and processing trending signals from multiple sources.
+
+This is the NEW feed system that supports:
+- RSS feeds
+- Google Trends
+- Exploding Topics
+- Web scraping
+
+For production use, see: src/forecasting/trending_feeds_integration.py
 """
 
 import sys
@@ -145,9 +153,12 @@ print("Next steps:")
 print("1. Install dependencies:")
 print("   pip install feedparser pytrends beautifulsoup4 pyyaml requests")
 print()
-print("2. Run integration with Prognosticator:")
+print("2. Run production integration:")
 print("   python src/forecasting/trending_feeds_integration.py")
 print()
 print("3. View stats:")
 print("   python src/forecasting/trending_feeds_integration.py --stats")
+print()
+print("📝 Note: This replaces the old scripts/ingest_rss_feeds.py script")
+print("   which only supported basic RSS. This new system is more capable.")
 print()

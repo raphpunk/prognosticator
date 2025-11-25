@@ -118,14 +118,15 @@ def cache_response(
         conn.commit()
         response_id = cur.lastrowid
         conn.close()
-        return response_id
+        return response_id if response_id is not None else 0
     except sqlite3.IntegrityError:
         # Already cached
         cur.execute(
             "SELECT id FROM agent_responses WHERE question_hash = ? AND agent_name = ?",
             (q_hash, agent_name)
         )
-        response_id = cur.fetchone()[0]
+        result = cur.fetchone()
+        response_id = result[0] if result else 0
         conn.close()
         return response_id
 

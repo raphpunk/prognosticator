@@ -136,12 +136,12 @@ DOMAIN_EXPERTISE_MATRIX = {
         "geopolitical": 0.8,
         "general": 0.7
     },
-    "⚔️ Military Strategy Expert": {
-        "military": 1.0,
-        "geopolitical": 0.9,
-        "general": 0.5
+    "🚚 Demand & Logistics Forecaster": {
+        "infrastructure": 0.9,
+        "financial": 0.7,
+        "general": 0.6
     },
-    "💰 Financial Markets Analyst": {
+    "💹 Financial Market Forecaster": {
         "financial": 1.0,
         "energy": 0.7,
         "general": 0.6
@@ -156,59 +156,61 @@ DOMAIN_EXPERTISE_MATRIX = {
         "technology": 0.7,
         "general": 0.9
     },
+    "🎖️ Military Strategy Expert": {
+        "military": 1.0,
+        "geopolitical": 0.9,
+        "general": 0.5
+    },
+    "📚 Historical Trends Expert": {
+        "geopolitical": 0.8,
+        "military": 0.7,
+        "general": 0.8
+    },
     "🔐 Technology & Cyber Expert": {
         "technology": 1.0,
         "infrastructure": 0.8,
         "general": 0.6
-    },
-    "📜 Historical Pattern Analyst": {
-        "geopolitical": 0.8,
-        "military": 0.7,
-        "general": 0.8
     },
     "🌍 Climate & Environmental Expert": {
         "environmental": 1.0,
         "energy": 0.7,
         "general": 0.5
     },
-    "🏛️ Political Analyst": {
-        "geopolitical": 1.0,
-        "policy": 0.8,
+    "👥 Societal Dynamics Expert": {
+        "societal": 1.0,
+        "policy": 0.7,
         "general": 0.7
     },
-    "🕵️ Intelligence & OSINT Specialist": {
+    "🏛️ Policy & Governance Analyst": {
+        "policy": 1.0,
+        "geopolitical": 0.7,
+        "general": 0.6
+    },
+    "📡 Intelligence & OSINT Specialist": {
         "military": 0.9,
         "geopolitical": 0.9,
         "technology": 0.7,
         "general": 0.6
     },
-    "🏭 Industrial & Supply Chain Expert": {
+    "🏭 Industrial & Manufacturing Analyst": {
         "infrastructure": 1.0,
         "technology": 0.7,
         "general": 0.6
     },
-    "🏥 Healthcare & Biosecurity Expert": {
+    "🧬 Health & Biosecurity Expert": {
         "health": 1.0,
         "policy": 0.6,
         "general": 0.5
     },
-    "🛠️ Infrastructure & Systems Analyst": {
+    "🌐 Network & Infrastructure Analyst": {
         "infrastructure": 1.0,
         "technology": 0.8,
         "general": 0.6
     },
-    "👥 Social Dynamics Researcher": {
-        "societal": 1.0,
-        "policy": 0.7,
+    "🚨 Local Threat Analyst": {
+        "societal": 0.9,
+        "infrastructure": 0.8,
         "general": 0.7
-    },
-    "📋 Regulatory & Policy Expert": {
-        "policy": 1.0,
-        "geopolitical": 0.7,
-        "general": 0.6
-    },
-    "🎭 Chaos Agent": {
-        "general": 0.5  # Contrarian, not domain-specific
     }
 }
 

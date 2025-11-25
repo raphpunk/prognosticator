@@ -117,9 +117,11 @@ def init_db(path: str):
     conn.close()
 
 
-def insert_articles(path: str, articles: List[Dict]):
+def insert_articles(path: str, articles: List[Dict]) -> int:
+    """Insert articles into database, return count of new articles inserted."""
     conn = sqlite3.connect(path)
     cur = conn.cursor()
+    inserted_count = 0
     for a in articles:
         try:
             text = a.get("text") or a.get("summary") or ""
@@ -145,11 +147,13 @@ def insert_articles(path: str, articles: List[Dict]):
                 "INSERT OR REPLACE INTO ingest_log (content_hash, first_seen, last_seen, count, source_url) VALUES (?,?,?,?,?)",
                 (content_hash, str(a.get("published")), str(a.get("published")), 1, a.get("source_url")),
             )
+            inserted_count += 1
         except Exception:
             # skip bad rows
             continue
     conn.commit()
     conn.close()
+    return inserted_count
 
 
 def insert_extracted(path: str, extracted: List[Dict]):

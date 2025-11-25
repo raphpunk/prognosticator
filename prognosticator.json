@@ -1,0 +1,188 @@
+{
+  "app": {
+    "name": "Prognosticator",
+    "version": "2.0"
+  },
+  "ollama": {
+    "host": "http://192.168.1.140",
+    "port": 11434
+  },
+  "feeds": {
+    "rss": [
+      {
+        "name": "Feeds (general news)",
+        "url": "https://feeds.bbci.co.uk/news/world/rss.xml",
+        "category": "general news"
+      },
+      {
+        "name": "Rss (general news)",
+        "url": "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+        "category": "general news"
+      },
+      {
+        "name": "Aljazeera (general news)",
+        "url": "https://www.aljazeera.com/xml/rss/all.xml",
+        "category": "general news"
+      },
+      {
+        "name": "Reutersagency (general news)",
+        "url": "https://www.reutersagency.com/feed/?best-topics=world",
+        "category": "general news"
+      },
+      {
+        "name": "Theguardian (general news)",
+        "url": "https://www.theguardian.com/world/rss",
+        "category": "general news"
+      },
+      {
+        "name": "Rss (general news)",
+        "url": "https://rss.cnn.com/rss/edition_world.rss",
+        "category": "general news"
+      },
+      {
+        "name": "Feeds (technology)",
+        "url": "https://feeds.feedburner.com/TechCrunch/",
+        "category": "technology"
+      },
+      {
+        "name": "Defenseone (military/defense)",
+        "url": "https://www.defenseone.com/rss.xml",
+        "category": "military/defense"
+      },
+      {
+        "name": "Thedrive (military/defense)",
+        "url": "https://www.thedrive.com/the-war-zone/feed",
+        "category": "military/defense"
+      },
+      {
+        "name": "Navalnews (military/defense)",
+        "url": "https://www.navalnews.com/feed/",
+        "category": "military/defense"
+      },
+      {
+        "name": "Defense (military/defense)",
+        "url": "https://www.defense.gov/DesktopModules/ArticleCS/RSS.ashx?max=10&ContentType=1&Site=945",
+        "category": "military/defense"
+      },
+      {
+        "name": "News (military/defense)",
+        "url": "https://news.usni.org/feed",
+        "category": "military/defense"
+      },
+      {
+        "name": "Janes (military/defense)",
+        "url": "https://www.janes.com/feeds/news",
+        "category": "military/defense"
+      },
+      {
+        "name": "State (government/official)",
+        "url": "https://www.state.gov/rss-feeds/",
+        "category": "government/official"
+      },
+      {
+        "name": "Whitehouse (government/official)",
+        "url": "https://www.whitehouse.gov/feed/",
+        "category": "government/official"
+      },
+      {
+        "name": "Home (government/official)",
+        "url": "https://home.treasury.gov/rss/press-releases",
+        "category": "government/official"
+      },
+      {
+        "name": "Federalreserve (government/official)",
+        "url": "https://www.federalreserve.gov/feeds/h41.xml",
+        "category": "government/official"
+      },
+      {
+        "name": "Research (financial/markets)",
+        "url": "https://research.stlouisfed.org/rss/updates/fredseries.xml",
+        "category": "financial/markets"
+      },
+      {
+        "name": "Reutersagency (financial/markets)",
+        "url": "https://www.reutersagency.com/feed/?best-topics=business-finance&post_type=best",
+        "category": "financial/markets"
+      },
+      {
+        "name": "Feeds (financial/markets)",
+        "url": "https://feeds.bloomberg.com/markets/news.rss",
+        "category": "financial/markets"
+      },
+      {
+        "name": "Ft (financial/markets)",
+        "url": "https://www.ft.com/world?format=rss",
+        "category": "financial/markets"
+      },
+      {
+        "name": "Bellingcat (osint/analysis)",
+        "url": "https://www.bellingcat.com/feed/",
+        "category": "osint/analysis"
+      },
+      {
+        "name": "Acleddata (osint/analysis)",
+        "url": "https://acleddata.com/feed/",
+        "category": "osint/analysis"
+      },
+      {
+        "name": "Worldview (osint/analysis)",
+        "url": "https://worldview.stratfor.com/rss.xml",
+        "category": "osint/analysis"
+      },
+      {
+        "name": "Csis (osint/analysis)",
+        "url": "https://www.csis.org/analysis/feed",
+        "category": "osint/analysis"
+      },
+      {
+        "name": "Reuters (general news)",
+        "url": "https://www.reuters.com/world/rss",
+        "category": "general news"
+      },
+      {
+        "name": "Apnews (general news)",
+        "url": "https://apnews.com/index.rss",
+        "category": "general news"
+      },
+      {
+        "name": "Reddit: geopolitics (reddit)",
+        "url": "https://www.reddit.com/r/geopolitics/.rss",
+        "category": "reddit"
+      },
+      {
+        "name": "Reddit: CredibleDefense (reddit)",
+        "url": "https://www.reddit.com/r/CredibleDefense/.rss",
+        "category": "reddit"
+      },
+      {
+        "name": "Reddit: OSINT (reddit)",
+        "url": "https://www.reddit.com/r/OSINT/.rss",
+        "category": "reddit"
+      },
+      {
+        "name": "Richmond (local/virginia)",
+        "url": "https://richmond.com/search/?f=rss&t=article&l=25&s=start_time&sd=desc",
+        "category": "local/virginia"
+      },
+      {
+        "name": "Wric (local/virginia)",
+        "url": "https://www.wric.com/feed/",
+        "category": "local/virginia"
+      },
+      {
+        "name": "Nbc12 (local/virginia)",
+        "url": "https://www.nbc12.com/category/233879/news/?clienttype=rss",
+        "category": "local/virginia"
+      },
+      {
+        "name": "Wtvr (local/virginia)",
+        "url": "https://www.wtvr.com/news/local-news?format=rss",
+        "category": "local/virginia"
+      }
+    ]
+  },
+  "local_threats": {
+    "enabled": true,
+    "min_severity": 3
+  }
+}

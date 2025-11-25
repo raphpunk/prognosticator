@@ -1071,7 +1071,7 @@ def render_prediction_review_tab() -> None:
         existing_outcome = None
         if prediction_id:
             try:
-                conn = tracker._get_connection()
+                conn = sqlite3.connect(str(tracker.db_path))
                 cursor = conn.execute(
                     "SELECT outcome, notes FROM prediction_outcomes WHERE prediction_id = ?",
                     (prediction_id,)
@@ -1093,21 +1093,24 @@ def render_prediction_review_tab() -> None:
             with col1:
                 if st.button("✅ Mark Correct", type="primary"):
                     if prediction_id:
-                        tracker.record_outcome(prediction_id, "correct", "")
+                        from forecasting.performance_tracker import PredictionOutcome
+                        tracker.record_outcome(prediction_id, PredictionOutcome.CORRECT, "")
                         st.success("Marked as correct!")
                         st.rerun()
             
             with col2:
                 if st.button("❌ Mark Incorrect", type="secondary"):
                     if prediction_id:
-                        tracker.record_outcome(prediction_id, "incorrect", "")
+                        from forecasting.performance_tracker import PredictionOutcome
+                        tracker.record_outcome(prediction_id, PredictionOutcome.INCORRECT, "")
                         st.warning("Marked as incorrect")
                         st.rerun()
             
             with col3:
                 if st.button("⚠️ Mark Partial", type="secondary"):
                     if prediction_id:
-                        tracker.record_outcome(prediction_id, "partial", "")
+                        from forecasting.performance_tracker import PredictionOutcome
+                        tracker.record_outcome(prediction_id, PredictionOutcome.PARTIALLY_CORRECT, "")
                         st.info("Marked as partial")
                         st.rerun()
             

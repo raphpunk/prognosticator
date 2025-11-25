@@ -8,13 +8,18 @@ import streamlit as st
 import json
 from pathlib import Path
 import sqlite3
-from forecasting.ollama_utils import list_models_cli, list_models_http, pull_model_cli, pull_model_http
+from forecasting.ollama_utils import list_models_http, pull_model_http
 
 
-def load_feeds_config():
+def load_feeds_config() -> dict:
+    """Load feeds config, ensuring it's always a dict."""
     if Path("feeds.json").exists():
         with open("feeds.json", "r") as fh:
-            return json.load(fh)
+            data = json.load(fh)
+            # Ensure we always return a dict, even if file contains a list
+            if isinstance(data, list):
+                return {"feeds": data}
+            return data if isinstance(data, dict) else {"feeds": []}
     return {"feeds": []}
 
 
@@ -58,7 +63,7 @@ def main():
     st.title("🔮 Event Forecasting Admin")
     st.markdown("Configure your data sources and AI models.")
     
-    cfg = load_feeds_config()
+    cfg: dict = load_feeds_config()  # Type annotation to help type checker
     feeds = cfg.get("feeds", [])
 
     # --- Stats Section ---
@@ -229,11 +234,12 @@ def main():
         st.session_state["ollama_models"] = []
 
     def refresh_models():
-        """Refresh available models from Ollama (CLI or HTTP)."""
-        if mode == "cli":
-            models = list_models_cli()
+        """Refresh available models from Ollama (HTTP only)."""
+        if mode == "http":
+            models = list_models_http(host or "http://localhost", int(port) or 11434, api_key)
         else:
-            models = list_models_http(host, int(port) or 11434, api_key)
+            # For CLI mode, cannot list models programmatically
+            models = []
         st.session_state["ollama_models"] = models
 
     col_refresh, col_sel = st.columns([1, 3])
@@ -258,6 +264,9 @@ def main():
                 st.caption("No models found. Click Refresh or enter name manually.")
 
     if st.button("💾 Save AI Settings"):
+        # Ensure cfg is dict before setting keys
+        if not isinstance(cfg, dict):
+            cfg = {"feeds": feeds if isinstance(feeds, list) else []}
         cfg["ollama"] = {"mode": mode, "model": model, "host": host, "port": int(port), "api_key": api_key}
         save_feeds_config(cfg)
         st.success("AI settings saved!")
@@ -268,7 +277,7 @@ def main():
         st.info("Running test against configured Ollama...")
         try:
             import subprocess, shutil, requests
-            ocfg = cfg.get("ollama", {})
+            ocfg = cfg.get("ollama", {}) if isinstance(cfg, dict) else {}
             if ocfg.get("mode", "cli") == "cli":
                 if not shutil.which("ollama"):
                     st.error("`ollama` CLI not found in PATH")
@@ -281,11 +290,13 @@ def main():
                         st.code(proc.stdout)
             else:
                 # HTTP mode: POST to configured host:port/ (user must configure endpoint semantics)
-                url = f"{ocfg.get('host').rstrip('/')}:{ocfg.get('port')}/api/predict"
+                host_val = ocfg.get('host', 'http://localhost')
+                port_val = ocfg.get('port', 11434)
+                url = f"{host_val.rstrip('/')}:{port_val}/api/predict"
                 headers = {"Content-Type": "application/json"}
                 if ocfg.get("api_key"):
                     headers["Authorization"] = f"Bearer {ocfg.get('api_key')}"
-                payload = {"model": ocfg.get("model"), "prompt": test_prompt}
+                payload = {"model": ocfg.get("model", ""), "prompt": test_prompt}
                 resp = requests.post(url, json=payload, headers=headers, timeout=20)
                 if resp.status_code != 200:
                     st.error(f"HTTP call failed: {resp.status_code} {resp.text}")
@@ -298,17 +309,10 @@ def main():
     st.markdown("---")
     st.subheader("Install / Pull Model")
     new_model = st.text_input("Model to install (e.g. llava/llama2)")
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        if st.button("Pull model (CLI)"):
-            success, msg = pull_model_cli(new_model)
-            if success:
-                st.success(f"Pull succeeded: {msg}")
-                refresh_models()
-            else:
-                st.error(msg)
-    with col_b:
-        if st.button("Pull model (HTTP)"):
+    if st.button("Pull model (HTTP)"):
+        if not host:
+            st.error("Host is required")
+        else:
             success, msg = pull_model_http(host, int(port) or 11434, new_model, api_key)
             if success:
                 st.success(msg)

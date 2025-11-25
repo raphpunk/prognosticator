@@ -343,11 +343,11 @@ def _call_ollama_http(model: str, prompt: str, host: str, port: int, api_key: Op
         raise RuntimeError(f"Model error: {str(e)[:100]}")
 
 
-def call_model(prompt: str, model: str, cfg: Dict) -> str:
+def call_model(prompt: str, model: str, cfg: Dict, timeout: Optional[int] = None) -> str:
     mode = cfg.get("mode", "http")
     host = cfg.get("host", "http://localhost")
     port = int(cfg.get("port", 11434))
-    result = _call_ollama_http(model or cfg.get("model", model), prompt, host, port, cfg.get("api_key"))
+    result = _call_ollama_http(model or cfg.get("model", model), prompt, host, port, cfg.get("api_key"), timeout=timeout)
     
     # Handle circuit breaker response
     if isinstance(result, dict):
@@ -383,6 +383,15 @@ SUMMARIZER_PROMPT = (
     "\nContext:\n{context}\n\nAgent Briefs:\n{briefs}\n\nQuestion: {question}\n"
 )
 
+DISPATCHER_PROMPT = (
+    "You are the Chief of Staff for a geopolitical forecasting team. "
+    "Your goal is to select the most relevant experts to analyze a specific question.\n\n"
+    "Available Experts:\n{experts_list}\n\n"
+    "Question: {question}\n\n"
+    "Select the 3 to 5 most relevant experts. "
+    "Respond in JSON with a single key 'selected_agents' containing a list of the exact names of the selected experts."
+)
+
 
 def _extract_json_block(text: str) -> Optional[Dict]:
     if not text:
@@ -398,6 +407,48 @@ def _extract_json_block(text: str) -> Optional[Dict]:
         return None
 
 
+def select_relevant_agents(
+    question: str,
+    agents: List[Dict],
+    ollama_cfg: Dict,
+    model: str = "llama2"
+) -> List[str]:
+    """Select the most relevant agents for a given question using an LLM."""
+    logger = get_logger()
+    
+    # Format expert list for the prompt
+    experts_list = "\n".join([f"- {a['name']}: {a['role'][:100]}..." for a in agents])
+    
+    prompt = DISPATCHER_PROMPT.format(
+        experts_list=experts_list,
+        question=question
+    )
+    
+    try:
+        logger.info("Dispatcher selecting agents...")
+        raw_response = call_model(prompt, model, ollama_cfg)
+        parsed = _extract_json_block(raw_response)
+        
+        if parsed and "selected_agents" in parsed and isinstance(parsed["selected_agents"], list):
+            selected = parsed["selected_agents"]
+            # Validate names
+            valid_names = {a["name"] for a in agents}
+            validated = [name for name in selected if name in valid_names]
+            
+            if validated:
+                logger.info(f"Dispatcher selected {len(validated)} agents: {validated}")
+                return validated
+            else:
+                logger.warning("Dispatcher returned no valid agent names. Fallback to all.")
+        else:
+            logger.warning("Dispatcher response invalid or empty. Fallback to all.")
+            
+    except Exception as e:
+        logger.error(f"Dispatcher failed: {e}")
+    
+    # Fallback: return all agent names if dispatcher fails
+    return [a["name"] for a in agents]
+
 def run_conversation(
     question: str,
     db_path: str = "data/live.db",
@@ -405,6 +456,7 @@ def run_conversation(
     topk: Optional[int] = None,
     days: int = 7,
     enabled_agents: Optional[List[str]] = None,
+    use_dispatcher: bool = True,  # New parameter
 ) -> Dict:
     """Run multi-agent orchestrated conversation with parallel expert execution.
     
@@ -456,12 +508,26 @@ def run_conversation(
 
     # Apply user-selected filters if provided
     if enabled_agents is not None:
+        # If user explicitly provided a list (and it's not just ALL agents passed by default UI), use it.
+        # However, the current UI passes ALL agents. We need a way to distinguish "User selected specific" vs "User selected all/default".
+        # For now, if enabled_agents is passed, we respect it. 
+        # BUT, if we want to use the dispatcher, we should probably ignore enabled_agents if it contains ALL agents?
+        # Or better: The UI should pass None if it wants auto-selection.
+        
+        # Let's assume if use_dispatcher is True, we try to filter the enabled_agents further.
         enabled_set = {name.strip() for name in enabled_agents if name}
+        
+        if use_dispatcher and len(enabled_set) > 5: # Only dispatch if we have a large pool
+             # Filter the pool of enabled agents
+             pool = [a for a in agents if a["name"] in enabled_set]
+             selected_names = select_relevant_agents(question, pool, ollama_cfg, pool[0]["model"])
+             enabled_set = set(selected_names)
+
         if enabled_set:
             original_count = len(agents)
             agents = [agent for agent in agents if agent.get("name") in enabled_set]
             logger.info(
-                "Filtered agents based on user selection: %s -> %s",
+                "Filtered agents based on selection/dispatch: %s -> %s",
                 original_count,
                 len(agents),
             )
@@ -558,7 +624,8 @@ def run_conversation(
         )
         try:
             logger.debug(f"Calling agent: {agent_name}")
-            raw = call_model(prompt, agent.get("model"), ollama_cfg)
+            model_name = str(agent.get("model", "llama2"))
+            raw = call_model(prompt, model_name, ollama_cfg)
             parsed = _extract_json_block(raw)
             
             # Check if agent declined
@@ -715,6 +782,14 @@ def run_conversation(
         
         logger.info(f"Requeried {len(requeried_agents)} agents: {requeried_agents}")
 
+    # Phase 3.8: Adversarial Debate
+    # If there is significant disagreement, trigger a debate round
+    try:
+        agents_map = {a["name"]: a for a in agents}
+        agent_outputs = run_debate(question, context, agent_outputs, agents_map, ollama_cfg)
+    except Exception as e:
+        logger.error(f"Debate phase failed: {e}")
+
     # Phase 4: Synthesize expert opinions
     briefs_text = json.dumps(
         {item["agent"]: item.get("parsed") or item.get("raw") for item in agent_outputs},
@@ -727,7 +802,7 @@ def run_conversation(
             briefs=briefs_text,
             question=question
         )
-        summarizer_model = agents[0].get("model") if agents else "llama2"
+        summarizer_model = str(agents[0].get("model", "llama2")) if agents else "llama2"
         raw_summary = call_model(summary_prompt, summarizer_model, ollama_cfg)
         summary = _extract_json_block(raw_summary)
         
@@ -757,6 +832,8 @@ def run_conversation(
     # Calculate reputation-weighted consensus
     reputation_tracker = ReputationTracker()
     reputation_consensus = None
+    domain_classification = None  # Initialize to avoid unbound error
+
     try:
         # Classify domain for reputation weighting
         classifier = DomainClassifier()
@@ -819,7 +896,7 @@ def run_conversation(
     try:
         report_generator = PredictionReportGenerator()
         
-        if 'domain_classification' not in locals():
+        if domain_classification is None:
             classifier = DomainClassifier()
             domain_classification = classifier.classify(question)
         
@@ -847,7 +924,7 @@ def run_conversation(
         
         # Consensus result
         consensus_result = {
-            "strength": weighted_confidence,
+            "strength": weighted_confidence if total_weight > 0 else 0.0,
             "total_weight": total_weight
         }
         
@@ -903,6 +980,85 @@ def run_conversation(
         "quality_summary": quality_summary,
         "requeried_agents": requeried_agents if 'requeried_agents' in locals() else [],
     }
+
+def run_debate(
+    question: str,
+    context: str,
+    agent_outputs: List[Dict],
+    agents_map: Dict[str, Dict],
+    ollama_cfg: Dict
+) -> List[Dict]:
+    """Run a debate round between conflicting agents."""
+    logger = get_logger()
+    
+    # Extract probabilities
+    probs = []
+    for out in agent_outputs:
+        if not out.get("declined") and out.get("parsed") and isinstance(out["parsed"], dict):
+            p = out["parsed"].get("probability")
+            if isinstance(p, (int, float)):
+                probs.append((p, out))
+    
+    if len(probs) < 2:
+        return agent_outputs
+        
+    probs.sort(key=lambda x: x[0])
+    low_agent = probs[0][1]
+    high_agent = probs[-1][1]
+    
+    diff = high_agent[0] - low_agent[0]
+    if diff < 0.2: # Threshold for debate
+        return agent_outputs
+        
+    logger.info(f"Triggering debate between {low_agent['agent']} ({low_agent[0]:.2f}) and {high_agent['agent']} ({high_agent[0]:.2f}) - Diff: {diff:.2f}")
+    
+    # Run debate
+    # Low agent critiques High agent
+    low_prompt = DEBATE_PROMPT.format(
+        name=low_agent["agent"],
+        role=agents_map[low_agent["agent"]]["role"],
+        previous_analysis=high_agent["parsed"]["analysis"],
+        context=context,
+        question=question
+    )
+    
+    # High agent critiques Low agent
+    high_prompt = DEBATE_PROMPT.format(
+        name=high_agent["agent"],
+        role=agents_map[high_agent["agent"]]["role"],
+        previous_analysis=low_agent["parsed"]["analysis"],
+        context=context,
+        question=question
+    )
+    
+    # Execute in parallel
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f1 = executor.submit(call_model, low_prompt, str(agents_map[low_agent["agent"]]["model"]), ollama_cfg)
+        f2 = executor.submit(call_model, high_prompt, str(agents_map[high_agent["agent"]]["model"]), ollama_cfg)
+        
+        try:
+            low_resp = f1.result(timeout=60)
+            high_resp = f2.result(timeout=60)
+            
+            # Parse and update
+            low_parsed = _extract_json_block(low_resp)
+            high_parsed = _extract_json_block(high_resp)
+            
+            if low_parsed:
+                logger.info(f"Debate result {low_agent['agent']}: {low_parsed.get('position')}")
+                # Update analysis with debate notes
+                low_agent["parsed"]["analysis"] += f"\n\n[DEBATE UPDATE]: {low_parsed.get('rationale')}"
+                low_agent["debate_position"] = low_parsed
+                
+            if high_parsed:
+                logger.info(f"Debate result {high_agent['agent']}: {high_parsed.get('position')}")
+                high_agent["parsed"]["analysis"] += f"\n\n[DEBATE UPDATE]: {high_parsed.get('rationale')}"
+                high_agent["debate_position"] = high_parsed
+                
+        except Exception as e:
+            logger.error(f"Debate failed: {e}")
+            
+    return agent_outputs
 
 
 __all__ = [

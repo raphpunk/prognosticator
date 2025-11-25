@@ -126,7 +126,7 @@ class PerformanceTracker:
         question: str,
         question_hash: str,
         domain: Optional[str] = None,
-        agent_responses: List[Dict] = None
+        agent_responses: Optional[List[Dict]] = None
     ) -> None:
         """Record a new prediction and agent responses."""
         conn = sqlite3.connect(str(self.db_path))

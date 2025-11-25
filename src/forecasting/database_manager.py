@@ -20,6 +20,26 @@ class DatabaseManager:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
     
+    def _get_table_columns(self, cursor, table_name: str) -> List[str]:
+        """Get a list of columns for a given table."""
+        cursor.execute(f"PRAGMA table_info({table_name});")
+        return [row[1] for row in cursor.fetchall()]
+
+    def _migrate_articles_table(self, cursor):
+        """Apply migrations to the articles table."""
+        logger.info("Checking for articles table migrations...")
+        columns = self._get_table_columns(cursor, "articles")
+        
+        if "country_mentioned" not in columns:
+            try:
+                logger.info("Adding 'country_mentioned' column to 'articles' table.")
+                cursor.execute("ALTER TABLE articles ADD COLUMN country_mentioned TEXT;")
+                logger.info("✅ Column 'country_mentioned' added.")
+            except sqlite3.OperationalError as e:
+                logger.error(f"Could not add 'country_mentioned' column: {e}")
+        else:
+            logger.info("Articles table schema is up to date.")
+
     def _execute_script(self, script: str):
         """Execute SQL script safely."""
         conn = sqlite3.connect(self.db_path)
@@ -35,6 +55,10 @@ class DatabaseManager:
                     if "already exists" not in str(e):
                         logger.error(f"SQL Error: {e}")
         
+        # Apply migrations after ensuring table exists
+        if "CREATE TABLE IF NOT EXISTS articles" in script:
+            self._migrate_articles_table(cursor)
+
         conn.commit()
         conn.close()
     

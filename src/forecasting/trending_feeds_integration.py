@@ -99,6 +99,9 @@ def fetch_and_integrate_trending_feeds(
     """
     try:
         # Import trending feeds module
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent / 'sources'))
         from feeds import fetch_all_trending_feeds, load_feeds_config
         
         # Load configuration and fetch feeds
@@ -120,7 +123,7 @@ def fetch_and_integrate_trending_feeds(
             from forecasting.storage import insert_articles
             
             logger.info(f"Inserting {len(articles)} articles into database...")
-            inserted_count = insert_articles(articles, db_path=db_path)
+            inserted_count = insert_articles(db_path, articles)
             
             logger.info(f"✓ Successfully inserted {inserted_count} new trending articles")
             return inserted_count

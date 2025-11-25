@@ -197,18 +197,13 @@ def render_header():
 # SIDEBAR CONFIGURATION
 # ============================================================================
 
-def render_sidebar() -> str:
+def render_sidebar():
     """Render sidebar navigation."""
     with st.sidebar:
-        st.title("⚙️ Configuration")
-        
-        tab = st.selectbox(
-            "Settings",
-            ["🎯 Quick Start", "🤖 AI Models", "📡 Feeds", "🚨 Threats", "⚡ Advanced"]
-        )
-        
+        st.title("🔮 Prognosticator")
+        st.caption("Multi-Agent Geopolitical Forecasting")
         st.markdown("---")
-        
+
         # Database stats
         st.subheader("📊 Status")
         try:
@@ -229,7 +224,8 @@ def render_sidebar() -> str:
             else:
                 st.error("❌ Failed")
         
-        return tab
+        st.markdown("---")
+        st.caption(datetime.now().strftime("%H:%M:%S"))
 
 
 # ============================================================================
@@ -253,8 +249,8 @@ ollama pull qwen2.5:0.5b
     st.subheader("Step 3: Verify Connection")
     if st.button("🧪 Test Ollama"):
         cfg = st.session_state.config
-        host = cfg.get("ollama", {}).get("host", "localhost")
-        port = cfg.get("ollama", {}).get("port", 11434)
+        host = str(cfg.get("ollama", {}).get("host", "localhost"))
+        port = int(cfg.get("ollama", {}).get("port", 11434))
         
         result = test_ollama_connection(host, port, None)
         if result["success"]:
@@ -274,14 +270,16 @@ def render_ai_models():
     
     col1, col2 = st.columns([2, 1])
     with col1:
-        host = st.text_input("Host", value=ollama_cfg.get("host", "http://localhost"))
+        host_val = ollama_cfg.get("host", "http://localhost")
+        host = st.text_input("Host", value=host_val)
         cfg["ollama"]["host"] = host
     with col2:
-        port = st.number_input("Port", value=int(ollama_cfg.get("port", 11434)))
+        port_val = int(ollama_cfg.get("port", 11434))
+        port = st.number_input("Port", value=port_val)
         cfg["ollama"]["port"] = port
     
     if st.button("🧪 Test Connection"):
-        result = test_ollama_connection(host, port, None)
+        result = test_ollama_connection(str(host), int(port), None)
         if result["success"]:
             st.success(f"✅ {result['details']}")
         else:
@@ -291,7 +289,7 @@ def render_ai_models():
     
     st.subheader("Available Models")
     try:
-        models = list_models_http(host, port, None)
+        models = list_models_http(str(host), int(port), None)
         if models:
             st.success(f"Found {len(models)} models:")
             for m in models:
@@ -307,11 +305,11 @@ def render_ai_models():
     model_name = st.text_input("Model name", placeholder="e.g., mistral")
     if st.button("📥 Pull Model"):
         with st.spinner("Pulling..."):
-            result = pull_model_http(host, port, model_name, None)
-            if result["success"]:
-                st.success(f"✅ {result['details']}")
+            success, msg = pull_model_http(str(host), int(port), model_name, None)
+            if success:
+                st.success(f"✅ {msg}")
             else:
-                st.error(f"❌ {result['status']}")
+                st.error(f"❌ {msg}")
 
 
 def render_feeds():
@@ -343,7 +341,7 @@ def render_feeds():
                 
                 urls = [f["url"] for f in feeds if f.get("url")]
                 items = fetch_multiple_feeds(urls)
-                inserted = insert_articles(items)
+                inserted = insert_articles("data/live.db", items)
                 
                 st.success(f"✅ Fetched {inserted} articles")
             except Exception as e:
@@ -425,12 +423,15 @@ def render_dashboard():
         
         st.subheader("Top Sources")
         try:
-            df = pd.read_sql_query(
-                "SELECT source_url, COUNT(*) as count FROM articles GROUP BY source_url ORDER BY count DESC LIMIT 10",
-                conn
-            )
-            if not df.empty:
-                st.bar_chart(df.set_index('source_url')['count'])
+            if pd:
+                df = pd.read_sql_query(
+                    "SELECT source_url, COUNT(*) as count FROM articles GROUP BY source_url ORDER BY count DESC LIMIT 10",
+                    conn
+                )
+                if not df.empty:
+                    st.bar_chart(df.set_index('source_url')['count'])
+            else:
+                st.info("Pandas not installed, cannot show chart")
         except:
             st.info("No data yet")
     
@@ -468,11 +469,13 @@ def render_predictions():
             height=80
         )
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             days = st.slider("Days", 1, 90, 14)
         with col2:
             topk = st.slider("Articles", 3, 20, 5)
+        with col3:
+            use_dispatcher = st.checkbox("Smart Dispatch", value=True, help="Automatically select relevant experts to save resources")
         
         submit = st.form_submit_button("🚀 Analyze", disabled=not can_analyze, type="primary")
     
@@ -487,6 +490,7 @@ def render_predictions():
                     topk=topk,
                     days=days,
                     enabled_agents=[a["name"] for a in agents],
+                    use_dispatcher=use_dispatcher
                 )
                 
                 st.session_state.scenario_result = result
@@ -535,9 +539,8 @@ def render_threats_tab():
                 threats = fetch_local_threat_feeds_with_health_tracking(
                     zip_code=location,
                     lookback_hours=6,
-                    min_severity=cfg.get("local_threats", {}).get("min_severity", 3),
-                    tracker_db_path="data/local_threats.db",
-                    health_db_path="data/feed_health.db"
+                    tracker_db_path="data/live.db",
+                    health_db_path="data/live.db"
                 )
                 
                 if threats:
@@ -561,32 +564,43 @@ def main():
     
     # Sidebar
     settings_tab = render_sidebar()
-    
-    # Main tabs
-    main_tab = st.selectbox(
-        "View",
-        ["📊 Dashboard", "🔮 Analysis", "🚨 Threats"],
-        label_visibility="collapsed"
-    )
-    
-    if main_tab == "📊 Dashboard":
-        render_dashboard()
-    elif main_tab == "🔮 Analysis":
-        render_predictions()
-    elif main_tab == "🚨 Threats":
-        render_threats_tab()
-    
-    # Settings
-    if settings_tab == "🎯 Quick Start":
-        render_quick_start()
-    elif settings_tab == "🤖 AI Models":
-        render_ai_models()
-    elif settings_tab == "📡 Feeds":
-        render_feeds()
-    elif settings_tab == "🚨 Threats":
-        render_threats()
-    elif settings_tab == "⚡ Advanced":
-        render_advanced()
+
+    # Main content area
+    main_container = st.container()
+
+    # Render settings inside the sidebar
+    with st.sidebar:
+        st.markdown("---")
+        st.title("⚙️ Configuration")
+        
+        settings_tab = st.selectbox(
+            "Settings",
+            ["🎯 Quick Start", "🤖 AI Models", "📡 Feeds", "🚨 Threats", "⚡ Advanced"]
+        )
+
+        if settings_tab == "🎯 Quick Start":
+            render_quick_start()
+        elif settings_tab == "🤖 AI Models":
+            render_ai_models()
+        elif settings_tab == "📡 Feeds":
+            render_feeds()
+        elif settings_tab == "🚨 Threats":
+            render_threats()
+        elif settings_tab == "⚡ Advanced":
+            render_advanced()
+
+    # Main application tabs
+    with main_container:
+        dash_tab, analysis_tab, threats_tab = st.tabs(["📊 Dashboard", "🔮 Analysis", "🚨 Threats"])
+
+        with dash_tab:
+            render_dashboard()
+        
+        with analysis_tab:
+            render_predictions()
+
+        with threats_tab:
+            render_threats_tab()
 
 
 if __name__ == "__main__":
